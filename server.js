@@ -1,6 +1,6 @@
 // server.js — Hartaku Backend utama
 // Node.js + Express | Railway deployment
-// v1.1 — Twilio WhatsApp aktif
+// v1.2 — Fix pesan panjang > 1600 karakter
 
 import "dotenv/config";
 import express from "express";
@@ -19,11 +19,33 @@ import {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Twilio client
 const twilioClient = twilio(
   process.env.TWILIO_ACCOUNT_SID,
   process.env.TWILIO_AUTH_TOKEN
 );
+
+// ============================================
+// HELPER: Pecah pesan panjang jadi beberapa bagian
+// ============================================
+function splitMessage(text, maxLength = 800) {
+  if (text.length <= maxLength) return [text];
+
+  const parts = [];
+  const paragraphs = text.split('\n\n');
+  let current = '';
+
+  for (const paragraph of paragraphs) {
+    if ((current + '\n\n' + paragraph).length > maxLength) {
+      if (current) parts.push(current.trim());
+      current = paragraph;
+    } else {
+      current = current ? current + '\n\n' + paragraph : paragraph;
+    }
+  }
+
+  if (current) parts.push(current.trim());
+  return parts.filter(p => p.length > 0);
+}
 
 // ============================================
 // MIDDLEWARE
@@ -58,7 +80,7 @@ app.get("/", (req, res) => {
   res.json({
     status: "ok",
     service: "Hartaku Backend",
-    version: "1.1.0",
+    version: "1.2.0",
     timestamp: new Date().toISOString(),
   });
 });
@@ -72,13 +94,12 @@ app.get("/health", (req, res) => {
 // ============================================
 
 app.post("/twilio/webhook", async (req, res) => {
-  // Balas 200 ke Twilio dulu agar tidak timeout
   res.status(200).send("OK");
 
   try {
     const incomingMsg = req.body.Body?.trim();
-    const from = req.body.From; // format: whatsapp:+628xxx
-    const to = req.body.To;     // format: whatsapp:+14155238886
+    const from = req.body.From;
+    const to = req.body.To;
 
     if (!incomingMsg || !from) {
       console.log("[Twilio] Pesan kosong atau tidak valid");
@@ -87,43 +108,41 @@ app.post("/twilio/webhook", async (req, res) => {
 
     console.log(`[Twilio] Pesan masuk dari ${from}: ${incomingMsg}`);
 
-    // Gunakan nomor WA sebagai session ID
     const sessionId = from.replace("whatsapp:", "");
 
-    // Pastikan sesi ada
     await getOrCreateSession(sessionId, {
       platform: "whatsapp",
       phoneNumber: sessionId,
     });
 
-    // Ambil riwayat percakapan
     const history = await getMessages(sessionId);
-
-    // Tambahkan pesan baru
     const messages = [...history, { role: "user", content: incomingMsg }];
-
-    // Simpan pesan user
     await saveMessage(sessionId, "user", incomingMsg);
 
-    // Kirim ke Anthropic
     const reply = await chat(messages);
 
-    // Simpan balasan
     await saveMessage(sessionId, "assistant", reply);
     await touchSession(sessionId);
 
-    // Kirim balasan ke WhatsApp via Twilio
-    await twilioClient.messages.create({
-      from: to,
-      to: from,
-      body: reply,
-    });
+    // Pecah pesan kalau lebih dari 1500 karakter
+    const parts = splitMessage(reply, 800);
 
-    console.log(`[Twilio] Balasan terkirim ke ${from}`);
+    for (const part of parts) {
+      await twilioClient.messages.create({
+        from: to,
+        to: from,
+        body: part,
+      });
+      // Jeda kecil antar pesan agar urutan terjaga
+      if (parts.length > 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    console.log(`[Twilio] Balasan terkirim ke ${from} (${parts.length} bagian)`);
   } catch (err) {
     console.error("[Twilio] Error:", err);
 
-    // Coba kirim pesan error ke user
     try {
       await twilioClient.messages.create({
         from: req.body.To,
@@ -142,9 +161,7 @@ app.post("/twilio/webhook", async (req, res) => {
 
 function requireSecret(req, res, next) {
   const secret = req.headers["x-api-secret"];
-  if (!process.env.API_SECRET) {
-    return next();
-  }
+  if (!process.env.API_SECRET) return next();
   if (secret !== process.env.API_SECRET) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -192,23 +209,15 @@ app.post("/reset", requireSecret, async (req, res) => {
   }
 });
 
-// ============================================
-// ERROR HANDLER
-// ============================================
-
 app.use((err, req, res, _next) => {
   console.error("[Server] Unhandled error:", err);
   res.status(500).json({ error: "Internal server error" });
 });
 
-// ============================================
-// START
-// ============================================
-
 app.listen(PORT, () => {
   console.log(`
 ╔══════════════════════════════════════╗
-║        HARTAKU BACKEND v1.1          ║
+║        HARTAKU BACKEND v1.2          ║
 ║  Warisan · Hukum · Keuangan Keluarga ║
 ╠══════════════════════════════════════╣
 ║  Port    : ${String(PORT).padEnd(26)}║
