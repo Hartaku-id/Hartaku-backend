@@ -1,5 +1,6 @@
-// supabase.js — Supabase client & session helpers
-// Hartaku Backend v1.0
+// supabase.js — Supabase database wrapper
+// Hartaku Backend v1.3
+// Update: Auto-summarization setelah 20 pesan
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -12,122 +13,187 @@ const supabase = createClient(
 // SESSION MANAGEMENT
 // ============================================
 
-/**
- * Buat sesi baru atau ambil sesi yang sudah ada
- * @param {string} sessionId - UUID sesi
- * @param {object} metadata - { platform: 'web'|'whatsapp', phoneNumber? }
- */
 export async function getOrCreateSession(sessionId, metadata = {}) {
-  // Cek apakah sesi sudah ada
-  const { data: existing, error: fetchError } = await supabase
-    .from("sessions")
-    .select("*")
-    .eq("id", sessionId)
-    .single();
+  try {
+    const { data: existing } = await supabase
+      .from("sessions")
+      .select("*")
+      .eq("session_id", sessionId)
+      .single();
 
-  if (fetchError && fetchError.code !== "PGRST116") {
-    // PGRST116 = not found, error lain perlu dilog
-    console.error("[Supabase] getOrCreateSession fetch error:", fetchError);
+    if (existing) return existing;
+
+    const { data, error } = await supabase
+      .from("sessions")
+      .insert({
+        session_id: sessionId,
+        metadata,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`Gagal membuat sesi baru: ${error.message}`);
+    return data;
+  } catch (err) {
+    console.error("[Supabase] getOrCreateSession insert error:", err);
+    throw err;
   }
-
-  if (existing) return existing;
-
-  // Buat sesi baru
-  const { data: newSession, error: insertError } = await supabase
-    .from("sessions")
-    .insert({
-      id: sessionId,
-      platform: metadata.platform || "web",
-      phone_number: metadata.phoneNumber || null,
-      created_at: new Date().toISOString(),
-      last_active: new Date().toISOString(),
-    })
-    .select()
-    .single();
-
-  if (insertError) {
-    console.error("[Supabase] getOrCreateSession insert error:", insertError);
-    throw new Error("Gagal membuat sesi baru");
-  }
-
-  return newSession;
 }
 
-/**
- * Update waktu last_active sesi
- */
 export async function touchSession(sessionId) {
-  await supabase
-    .from("sessions")
-    .update({ last_active: new Date().toISOString() })
-    .eq("id", sessionId);
-}
-
-/**
- * Simpan data profil klien setelah profiling selesai
- * @param {string} sessionId
- * @param {object} profile - { name, gender, age, religion, domisili, ... }
- */
-export async function updateSessionProfile(sessionId, profile) {
-  const { error } = await supabase
-    .from("sessions")
-    .update({
-      client_name: profile.name || null,
-      client_gender: profile.gender || null,
-      client_age: profile.age || null,
-      last_active: new Date().toISOString(),
-    })
-    .eq("id", sessionId);
-
-  if (error) console.error("[Supabase] updateSessionProfile error:", error);
+  try {
+    await supabase
+      .from("sessions")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("session_id", sessionId);
+  } catch (err) {
+    console.error("[Supabase] touchSession error:", err);
+  }
 }
 
 // ============================================
-// MESSAGE HISTORY
+// MESSAGE MANAGEMENT
 // ============================================
 
-/**
- * Ambil seluruh riwayat pesan sesi (untuk dikirim ke Anthropic)
- * @returns {Array} format [{ role: 'user'|'assistant', content: string }]
- */
 export async function getMessages(sessionId) {
-  const { data, error } = await supabase
-    .from("messages")
-    .select("role, content")
-    .eq("session_id", sessionId)
-    .order("created_at", { ascending: true });
+  try {
+    // Ambil ringkasan jika ada
+    const { data: session } = await supabase
+      .from("sessions")
+      .select("summary")
+      .eq("session_id", sessionId)
+      .single();
 
-  if (error) {
-    console.error("[Supabase] getMessages error:", error);
+    // Ambil pesan terbaru (maksimal 20 terakhir)
+    const { data: messages, error } = await supabase
+      .from("messages")
+      .select("role, content")
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: true })
+      .limit(20);
+
+    if (error) throw error;
+
+    const result = messages || [];
+
+    // Kalau ada ringkasan, sisipkan sebagai konteks di awal
+    if (session?.summary) {
+      return [
+        {
+          role: "user",
+          content: `[KONTEKS PERCAKAPAN SEBELUMNYA]\n${session.summary}\n[LANJUTAN PERCAKAPAN]`
+        },
+        {
+          role: "assistant",
+          content: "Baik, saya sudah membaca konteks percakapan kita sebelumnya. Silakan lanjutkan."
+        },
+        ...result
+      ];
+    }
+
+    return result;
+  } catch (err) {
+    console.error("[Supabase] getMessages error:", err);
     return [];
   }
-
-  return data || [];
 }
 
-/**
- * Simpan satu pesan ke database
- * @param {string} sessionId
- * @param {'user'|'assistant'} role
- * @param {string} content
- */
 export async function saveMessage(sessionId, role, content) {
-  const { error } = await supabase.from("messages").insert({
-    session_id: sessionId,
-    role,
-    content,
-    created_at: new Date().toISOString(),
-  });
+  try {
+    const { error } = await supabase.from("messages").insert({
+      session_id: sessionId,
+      role,
+      content,
+      created_at: new Date().toISOString(),
+    });
 
-  if (error) console.error("[Supabase] saveMessage error:", error);
+    if (error) throw error;
+
+    // Cek jumlah pesan — kalau sudah 20, trigger summarization
+    const { count } = await supabase
+      .from("messages")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId);
+
+    if (count >= 20) {
+      // Jalankan summarization di background, tidak block respons
+      summarizeAndCompress(sessionId).catch(err =>
+        console.error("[Supabase] Background summarization error:", err)
+      );
+    }
+  } catch (err) {
+    console.error("[Supabase] saveMessage error:", err);
+  }
 }
 
-/**
- * Hapus semua pesan sesi (untuk fitur reset)
- */
+// ============================================
+// SUMMARIZATION — Claude meringkas percakapan
+// ============================================
+
+async function summarizeAndCompress(sessionId) {
+  try {
+    // Ambil semua pesan yang ada
+    const { data: allMessages, error } = await supabase
+      .from("messages")
+      .select("role, content, created_at")
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: true });
+
+    if (error || !allMessages || allMessages.length < 20) return;
+
+    console.log(`[Supabase] Mulai summarization untuk sesi ${sessionId} (${allMessages.length} pesan)`);
+
+    // Import chat function dari anthropic
+    const { summarize } = await import("./anthropic.js");
+
+    // Buat ringkasan menggunakan Claude
+    const conversationText = allMessages
+      .map(m => `${m.role === 'user' ? 'Klien' : 'Hartaku'}: ${m.content}`)
+      .join('\n');
+
+    const summary = await summarize(conversationText);
+
+    // Simpan ringkasan di tabel sessions
+    await supabase
+      .from("sessions")
+      .update({
+        summary,
+        updated_at: new Date().toISOString()
+      })
+      .eq("session_id", sessionId);
+
+    // Hapus semua pesan lama — sisakan 5 pesan terakhir untuk konteks langsung
+    const keepMessages = allMessages.slice(-5);
+    const deleteBeforeId = keepMessages[0].created_at;
+
+    await supabase
+      .from("messages")
+      .delete()
+      .eq("session_id", sessionId)
+      .lt("created_at", deleteBeforeId);
+
+    console.log(`[Supabase] Summarization selesai untuk sesi ${sessionId}`);
+  } catch (err) {
+    console.error("[Supabase] summarizeAndCompress error:", err);
+  }
+}
+
+// ============================================
+// CLEAR SESSION
+// ============================================
+
 export async function clearSession(sessionId) {
-  await supabase.from("messages").delete().eq("session_id", sessionId);
-  await supabase.from("sessions").delete().eq("id", sessionId);
+  try {
+    await supabase.from("messages").delete().eq("session_id", sessionId);
+    await supabase
+      .from("sessions")
+      .update({ summary: null, updated_at: new Date().toISOString() })
+      .eq("session_id", sessionId);
+  } catch (err) {
+    console.error("[Supabase] clearSession error:", err);
+  }
 }
 
 export default supabase;
