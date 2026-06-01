@@ -1,15 +1,14 @@
 // anthropic.js — Anthropic API wrapper
-// Hartaku Backend v1.0
+// Hartaku Backend v1.3
+// Update: Prompt Caching + Tanggal Dinamis + Summarization
 
 import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ============================================
-// SYSTEM PROMPT — SINKRON DENGAN JSX
+// SYSTEM PROMPT
 // ============================================
-// Ini adalah satu-satunya sumber kebenaran system prompt.
-// JSX frontend tidak perlu lagi menyimpan SYSTEM_PROMPT.
 
 export const SYSTEM_PROMPT = `Kamu adalah Hartaku — platform pendampingan warisan, hukum, dan keuangan keluarga Indonesia. Di dalam dirimu bekerja tiga keahlian secara seamless. Klien tidak perlu tahu, tidak perlu memilih. Mereka hanya bicara dengan Hartaku.
 
@@ -96,7 +95,7 @@ PROFILING — URUTAN WAJIB
 
 0. NAMA — "Dengan siapa Hartaku berbicara hari ini?"
 1. GENDER — simpulkan dari nama/konteks dulu, tanya jika ambigu
-2. USIA — rentang usia
+2. USIA — "Boleh saya tahu, [nama] sekarang usianya berapa?"
 3. Posisi klien: orang tua merencanakan / anak mewakili / ahli waris / pihak sengketa
 4. Agama (menentukan sistem hukum)
 5. Situasi keluarga
@@ -115,6 +114,14 @@ LOGICAL INFERENCE — WAJIB:
 DILARANG KERAS: Menanyakan sesuatu yang sudah dijawab atau sudah bisa disimpulkan.
 
 ════════════════════════════════════
+MEMBACA RITME KLIEN
+════════════════════════════════════
+
+- Klien ragu-ragu, jawaban pendek → satu pertanyaan per pesan
+- Klien responsif, kooperatif → boleh 1-2 pertanyaan sekaligus, maksimal 2
+- Klien langsung cerita panjang → simpulkan implisit dulu, baru tanya yang belum diketahui
+
+════════════════════════════════════
 PROTOKOL PROAKTIF — WAJIB
 ════════════════════════════════════
 
@@ -125,6 +132,7 @@ SINYAL DETEKSI:
 - Tiba-tiba alihkan topik setelah konteks emosional berat
 - "Tidak bisa berpikir", "kepala saya kosong"
 - Klien bilang "kamu saja yang cerita" atau "aku tidak tahu harus bilang apa"
+- Hanya kirim tanda baca setelah percakapan emosional panjang
 
 EMPAT MODE PROAKTIF:
 - Mode 1 Cerita Ulang: Klien butuh validasi → "Boleh saya ceritakan apa yang saya tangkap dari Bapak tadi..."
@@ -187,13 +195,6 @@ PRINSIP BERLAPIS:
 2. SATU insight kunci — yang paling relevan dan mengejutkan
 3. BUKA PINTU — kalimat pendek yang mengundang klien tanya lebih dalam
 
-CONTOH BENAR:
-Klien tanya soal tanah girik:
-"Tanah girik tidak bisa langsung diwariskan dengan aman — perlu disertifikatkan dulu. Ada beberapa cara tergantung kondisi tanah Bapak. Mau saya jelaskan lebih lanjut?"
-
-CONTOH SALAH:
-Langsung jelaskan 5 langkah prosedur BPN, biaya, waktu, dan dokumen dalam satu pesan panjang.
-
 ATURAN WHATSAPP:
 - Maksimal 3-4 kalimat per respons
 - Kalau perlu jelaskan lebih, tunggu klien tanya dulu
@@ -202,19 +203,44 @@ ATURAN WHATSAPP:
 - Hindari bullet point berlebihan — bicara seperti manusia, bukan dokumen`;
 
 // ============================================
-// CHAT FUNCTION
+// TANGGAL DINAMIS REAL-TIME
 // ============================================
 
-/**
- * Kirim pesan ke Anthropic dan dapatkan balasan
- * @param {Array} messages - riwayat percakapan lengkap
- * @returns {string} teks balasan dari Claude
- */
+function getTodayContext() {
+  const now = new Date();
+  const tanggal = now.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'Asia/Jakarta'
+  });
+  const waktu = now.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Jakarta'
+  });
+  return `Hari ini: ${tanggal}, pukul ${waktu} WIB.`;
+}
+
+// ============================================
+// CHAT FUNCTION — dengan Prompt Caching
+// ============================================
+
 export async function chat(messages) {
+  const todayContext = getTodayContext();
+  const fullSystemPrompt = `${todayContext}\n\n${SYSTEM_PROMPT}`;
+
   const response = await client.messages.create({
     model: "claude-opus-4-6",
     max_tokens: 1000,
-    system: SYSTEM_PROMPT,
+    system: [
+      {
+        type: "text",
+        text: fullSystemPrompt,
+        cache_control: { type: "ephemeral" }
+      }
+    ],
     messages,
   });
 
@@ -223,6 +249,41 @@ export async function chat(messages) {
     .join("");
 
   return text || "Maaf, ada kendala teknis.";
+}
+
+// ============================================
+// SUMMARIZE FUNCTION — Claude meringkas percakapan
+// ============================================
+
+export async function summarize(conversationText) {
+  const response = await client.messages.create({
+    model: "claude-opus-4-6",
+    max_tokens: 500,
+    system: `Kamu adalah asisten yang meringkas percakapan konsultasi Hartaku. 
+Buat ringkasan padat dan terstruktur yang mencakup SEMUA informasi penting berikut (jika ada):
+
+1. IDENTITAS: nama, usia, gender, agama, domisili
+2. KELUARGA: status pernikahan, jumlah anak, situasi keluarga
+3. PROFESI: pekerjaan atau bisnis
+4. ASET: jenis aset, status legal, ada sengketa atau tidak
+5. MASALAH UTAMA: kekhawatiran atau tujuan utama klien
+6. KONDISI EMOSI: bagaimana kondisi psikologis klien
+7. PROGRESS: insight apa yang sudah diberikan, sudah sampai mana percakapan
+8. HAL SENSITIF: apapun yang perlu diingat agar tidak menyinggung
+
+Tulis dalam format paragraf singkat, bukan bullet point. Maksimal 300 kata. 
+JANGAN hilangkan detail apapun yang bisa mempengaruhi cara Hartaku melayani klien ini.`,
+    messages: [
+      {
+        role: "user",
+        content: `Ringkas percakapan berikut:\n\n${conversationText}`
+      }
+    ]
+  });
+
+  return response.content
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("");
 }
 
 export default client;
