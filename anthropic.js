@@ -4,7 +4,12 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const client = new Anthropic({ 
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  defaultHeaders: {
+    "anthropic-beta": "prompt-caching-2024-07-31"
+  }
+});
 
 // ============================================
 // SYSTEM PROMPT
@@ -301,16 +306,21 @@ function getTodayContext() {
 
 export async function chat(messages) {
   const todayContext = getTodayContext();
-  const fullSystemPrompt = `${todayContext}\n\n${SYSTEM_PROMPT}`;
 
   const response = await client.messages.create({
     model: "claude-opus-4-6",
     max_tokens: 1000,
     system: [
       {
+        // System prompt panjang yang statis — di-cache
         type: "text",
-        text: fullSystemPrompt,
+        text: SYSTEM_PROMPT,
         cache_control: { type: "ephemeral" }
+      },
+      {
+        // Tanggal dinamis — tidak di-cache karena berubah setiap saat
+        type: "text",
+        text: todayContext
       }
     ],
     messages,
