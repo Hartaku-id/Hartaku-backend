@@ -11,6 +11,7 @@ import fetch from "node-fetch";
 import { chat } from "./anthropic.js";
 import {
   getOrCreateSession,
+  checkAndIncrementLimit,
   touchSession,
   getMessages,
   saveMessage,
@@ -115,7 +116,7 @@ app.use(express.urlencoded({ extended: true }));
 // HEALTH CHECK
 // ============================================
 app.get("/", (req, res) => {
-  res.json({ status: "ok", service: "Hartaku Backend", version: "1.5.0" });
+  res.json({ status: "ok", service: "Hartaku Backend", version: "1.6.0" });
 });
 
 app.get("/health", (req, res) => {
@@ -141,6 +142,18 @@ app.post("/twilio/webhook", async (req, res) => {
 
     const sessionId = from.replace("whatsapp:", "");
     await getOrCreateSession(sessionId, { platform: "whatsapp", phoneNumber: sessionId });
+
+    // Cek daily limit
+    const limitCheck = await checkAndIncrementLimit(sessionId);
+    if (!limitCheck.allowed) {
+      console.log(`[Limit] Sesi ${sessionId} sudah mencapai batas ${60} pesan hari ini`);
+      await twilioClient.messages.create({
+        from: to,
+        to: from,
+        body: "Anda telah mencapai batas percakapan hari ini. Untuk melanjutkan tanpa batas, upgrade ke Hartaku Premier. Sampai jumpa besok."
+      });
+      return;
+    }
 
     const history = await getMessages(sessionId);
 
@@ -263,7 +276,7 @@ app.use((err, req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`
 ╔══════════════════════════════════════╗
-║        HARTAKU BACKEND v1.5          ║
+║        HARTAKU BACKEND v1.6          ║
 ║  Warisan · Hukum · Keuangan Keluarga ║
 ╠══════════════════════════════════════╣
 ║  Port     : ${String(PORT).padEnd(25)}║
