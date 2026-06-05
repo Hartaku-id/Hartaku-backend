@@ -1,6 +1,5 @@
-// supabase.js — Supabase database wrapper
-// Hartaku Backend v1.4
-// Disesuaikan dengan struktur tabel yang sudah ada
+// supabase.js — Hartaku Backend
+// v1.6 — Daily message limit + auto-summarization
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -9,13 +8,14 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
+const DAILY_LIMIT = 60;
+
 // ============================================
 // SESSION MANAGEMENT
 // ============================================
 
 export async function getOrCreateSession(sessionId, metadata = {}) {
   try {
-    // Cari session berdasarkan phone_number
     const { data: existing } = await supabase
       .from("sessions")
       .select("*")
@@ -24,13 +24,14 @@ export async function getOrCreateSession(sessionId, metadata = {}) {
 
     if (existing) return existing;
 
-    // Buat session baru dengan kolom yang ada
     const { data, error } = await supabase
       .from("sessions")
       .insert({
         id: crypto.randomUUID(),
         phone_number: sessionId,
         platform: metadata.platform || "whatsapp",
+        daily_message_count: 0,
+        last_message_date: new Date().toISOString().split('T')[0],
       })
       .select()
       .single();
@@ -55,19 +56,62 @@ export async function touchSession(sessionId) {
 }
 
 // ============================================
+// DAILY LIMIT CHECK
+// ============================================
+
+export async function checkAndIncrementLimit(sessionId) {
+  try {
+    const { data: session } = await supabase
+      .from("sessions")
+      .select("daily_message_count, last_message_date")
+      .eq("phone_number", sessionId)
+      .single();
+
+    if (!session) return { allowed: true, count: 0 };
+
+    const today = new Date().toISOString().split('T')[0];
+    const lastDate = session.last_message_date;
+
+    // Reset counter kalau hari baru
+    let count = session.daily_message_count || 0;
+    if (lastDate !== today) {
+      count = 0;
+    }
+
+    // Cek limit
+    if (count >= DAILY_LIMIT) {
+      return { allowed: false, count };
+    }
+
+    // Increment counter
+    await supabase
+      .from("sessions")
+      .update({
+        daily_message_count: count + 1,
+        last_message_date: today,
+        updated_at: new Date().toISOString()
+      })
+      .eq("phone_number", sessionId);
+
+    return { allowed: true, count: count + 1 };
+  } catch (err) {
+    console.error("[Supabase] checkAndIncrementLimit error:", err);
+    return { allowed: true, count: 0 }; // fail open
+  }
+}
+
+// ============================================
 // MESSAGE MANAGEMENT
 // ============================================
 
 export async function getMessages(sessionId) {
   try {
-    // Ambil ringkasan jika ada
     const { data: session } = await supabase
       .from("sessions")
       .select("summary")
       .eq("phone_number", sessionId)
       .single();
 
-    // Ambil 20 pesan terakhir
     const { data: messages, error } = await supabase
       .from("messages")
       .select("role, content")
@@ -79,7 +123,6 @@ export async function getMessages(sessionId) {
 
     const result = messages || [];
 
-    // Kalau ada ringkasan, sisipkan sebagai konteks di awal
     if (session?.summary) {
       return [
         {
@@ -112,7 +155,6 @@ export async function saveMessage(sessionId, role, content) {
 
     if (error) throw error;
 
-    // Cek jumlah pesan
     const { count } = await supabase
       .from("messages")
       .select("*", { count: "exact", head: true })
@@ -142,7 +184,7 @@ async function summarizeAndCompress(sessionId) {
 
     if (error || !allMessages || allMessages.length < 20) return;
 
-    console.log(`[Supabase] Mulai summarization sesi ${sessionId} (${allMessages.length} pesan)`);
+    console.log(`[Supabase] Mulai summarization sesi ${sessionId}`);
 
     const { summarize } = await import("./anthropic.js");
 
@@ -152,13 +194,11 @@ async function summarizeAndCompress(sessionId) {
 
     const summary = await summarize(conversationText);
 
-    // Simpan ringkasan di sessions berdasarkan phone_number
     await supabase
       .from("sessions")
       .update({ summary })
       .eq("phone_number", sessionId);
 
-    // Sisakan 5 pesan terakhir
     const keepMessages = allMessages.slice(-5);
     const deleteBeforeDate = keepMessages[0].created_at;
 
