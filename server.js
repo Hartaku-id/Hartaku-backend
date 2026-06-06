@@ -286,11 +286,9 @@ async function sendChakraMessage(phoneNumberId, accessToken, to, text) {
 // ============================================
 async function downloadChakraImage(mediaId, accessToken) {
   try {
-    const pluginId = process.env.CHAKRA_PLUGIN_ID;
-    
-    // Pakai Chakra Media API — bukan Meta Graph API langsung
-    console.log(`[Image] Fetching media via Chakra API, ID: ${mediaId}`);
-    const chakraMediaUrl = `https://api.chakrahq.com/v1/ext/plugin/whatsapp/${pluginId}/media/${mediaId}`;
+    // Pakai Chakra Media Attachments API — pakai query param ?mid=
+    console.log(`[Image] Fetching media via Chakra Attachments API, ID: ${mediaId}`);
+    const chakraMediaUrl = `https://api.chakrahq.com/v1/whatsapp/v19.0/media/whatsapp_business/attachments?mid=${mediaId}`;
     
     const mediaRes = await fetch(chakraMediaUrl, {
       headers: { "Authorization": `Bearer ${accessToken}` }
