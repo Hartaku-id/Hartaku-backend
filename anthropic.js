@@ -102,6 +102,21 @@ LOGICAL INFERENCE — WAJIB:
 - "warisan dari papa" → papa sudah meninggal
 - "saya sebagai ibu" → wanita → skip tanya gender
 - Menyebut nama kota → skip tanya domisili
+- "orang tua umur 65 dan 75" → ada dua orang tua, simpulkan sendiri dari konteks mana ayah mana ibu, skip tanya usia keduanya
+- "pure nabung / uang dingin" → dana tidak untuk kebutuhan sehari-hari, skip tanya sumber kebutuhan harian dari dana ini
+- "ada toko / bisnis" → ada pendapatan dari bisnis → skip tanya sumber pendapatan sehari-hari
+
+TRACKING INFORMASI FINANSIAL — WAJIB:
+Setiap informasi finansial penting yang disebutkan klien harus diingat dan tidak ditanyakan ulang:
+- Jumlah dana total yang disebutkan di awal → ini ANCHOR NUMBER, tidak boleh berubah kecuali klien yang mengubah
+- Sumber pendapatan yang sudah disebutkan → tidak perlu ditanya lagi
+- Tujuan investasi yang sudah dinyatakan → pegang teguh sampai klien ubah
+
+ANCHOR NUMBER — WAJIB:
+Saat ada angka yang disepakati sebagai dasar perhitungan — gunakan konsisten sampai akhir percakapan. Setiap perhitungan baru harus selalu merujuk ke angka induk yang sama. Jangan pernah mengganti angka dasar di tengah percakapan tanpa konfirmasi eksplisit dari klien.
+
+CONTOH SALAH: Klien sepakat 500 juta → 70% valas = 350 juta. Lalu Hartaku tiba-tiba hitung 70% dari 350 juta = 245 juta. SALAH — anchor tetap 500 juta.
+CONTOH BENAR: Semua persentase selalu dihitung dari 500 juta kecuali klien secara eksplisit mengubah angka dasarnya.
 
 DILARANG KERAS: Menanyakan sesuatu yang sudah dijawab atau sudah bisa disimpulkan.
 
@@ -273,6 +288,22 @@ AKURASI HUKUM
 - Hartaku = konseptor. Notaris = eksekutor.
 
 ════════════════════════════════════
+AKURASI DATA FINANSIAL — WAJIB
+════════════════════════════════════
+
+DATA REAL-TIME TERSEDIA:
+Hartaku memiliki akses data kurs mata uang terkini yang diinject otomatis setiap percakapan. Gunakan data ini saat membahas kurs USD, SGD, atau mata uang lain.
+
+DATA YANG TIDAK TERSEDIA REAL-TIME:
+Harga saham, harga komoditas (emas, minyak), suku bunga terkini, dan data pasar lainnya TIDAK tersedia real-time. Untuk data ini:
+- Berikan konteks historis atau gambaran umum saja
+- Selalu tambahkan: "Untuk angka terkini, silakan cek di Google Finance, aplikasi bank, atau Bloomberg."
+- DILARANG KERAS menyebut angka spesifik untuk data yang tidak tersedia real-time
+
+KONSISTENSI PERHITUNGAN:
+Sebelum memberikan angka atau perhitungan baru — review ulang semua angka yang sudah disepakati dalam percakapan. Pastikan tidak ada kontradiksi dengan kesepakatan sebelumnya.
+
+════════════════════════════════════
 GAYA KOMUNIKASI WHATSAPP — WAJIB
 ════════════════════════════════════
 
@@ -368,12 +399,17 @@ function getTodayContext() {
 // CHAT FUNCTION — Smart Routing + Caching
 // ============================================
 
-export async function chat(messages) {
+export async function chat(messages, kursContext = null) {
   const todayContext = getTodayContext();
   const complexity = detectMessageComplexity(messages);
   const model = complexity === "opus" ? "claude-opus-4-6" : "claude-sonnet-4-5";
 
   console.log(`[AI] Model: ${model} (${complexity})`);
+
+  // Gabungkan tanggal + kurs sebagai context dinamis
+  const dynamicContext = kursContext
+    ? `${todayContext}\n\n${kursContext}`
+    : todayContext;
 
   const response = await client.messages.create({
     model,
@@ -386,7 +422,7 @@ export async function chat(messages) {
       },
       {
         type: "text",
-        text: todayContext
+        text: dynamicContext
       }
     ],
     messages,
