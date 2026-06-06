@@ -9,6 +9,35 @@ import twilio from "twilio";
 import sharp from "sharp";
 import fetch from "node-fetch";
 import { chat } from "./anthropic.js";
+
+// ============================================
+// FETCH KURS REAL-TIME — frankfurter.app (gratis, no API key)
+// ============================================
+let kursCache = { data: null, timestamp: 0 };
+
+async function fetchKursTerkini() {
+  const now = Date.now();
+  // Cache 1 jam — tidak perlu fetch setiap pesan
+  if (kursCache.data && (now - kursCache.timestamp) < 3600000) {
+    return kursCache.data;
+  }
+  try {
+    const res = await fetch("https://api.frankfurter.app/latest?from=USD&to=IDR,SGD,EUR,MYR");
+    const data = await res.json();
+    const rates = data.rates;
+    const kursText = `Data kurs terkini (sumber: ECB via Frankfurter, diupdate harian):
+- USD 1 = IDR ${rates.IDR?.toLocaleString('id-ID') || 'tidak tersedia'}
+- SGD 1 = IDR ${Math.round((rates.IDR / rates.SGD) || 0).toLocaleString('id-ID')}
+- EUR 1 = IDR ${Math.round((rates.IDR / rates.EUR) || 0).toLocaleString('id-ID')}
+- MYR 1 = IDR ${Math.round((rates.IDR / rates.MYR) || 0).toLocaleString('id-ID')}
+Catatan: Untuk kurs real-time per menit, klien dapat cek di Google Finance atau aplikasi bank.`;
+    kursCache = { data: kursText, timestamp: now };
+    return kursText;
+  } catch (err) {
+    console.error("[Kurs] Gagal fetch kurs:", err);
+    return "Data kurs sedang tidak tersedia — minta klien cek di Google Finance atau aplikasi bank untuk kurs terkini.";
+  }
+}
 import {
   getOrCreateSession,
   checkAndIncrementLimit,
@@ -200,7 +229,8 @@ app.post("/twilio/webhook", async (req, res) => {
     const savedContent = incomingMsg || "[Gambar/Dokumen]";
     await saveMessage(sessionId, "user", savedContent);
 
-    const reply = await chat(messages);
+    const kursContext = await fetchKursTerkini();
+    const reply = await chat(messages, kursContext);
     await saveMessage(sessionId, "assistant", reply);
     await touchSession(sessionId);
 
