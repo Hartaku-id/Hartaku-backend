@@ -91,7 +91,8 @@ async function downloadAndCompressImage(mediaUrl) {
 
     if (!response.ok) throw new Error(`Gagal download gambar: ${response.status}`);
 
-    const buffer = await response.buffer();
+    const arrayBuf = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuf);
     const contentType = response.headers.get('content-type') || 'image/jpeg';
 
     // Kompres dengan Sharp — max 1200px, quality 85%
@@ -302,7 +303,8 @@ async function downloadChakraImage(mediaId, accessToken) {
       return null;
     }
 
-    const buffer = await mediaRes.buffer();
+    const arrayBuffer = await mediaRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
     console.log(`[Image] Downloaded ${buffer.length} bytes`);
 
     // Kompres dengan Sharp
