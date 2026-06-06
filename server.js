@@ -199,8 +199,15 @@ app.post("/chakra/webhook", async (req, res) => {
     // Proses gambar
     if (messageType === "image" && message.image) {
       const mediaId = message.image.id;
+      console.log(`[Chakra] Memproses gambar, media ID: ${mediaId}`);
       const imageBlock = await downloadChakraImage(mediaId, CHAKRA_TOKEN);
-      if (imageBlock) messageContent.push(imageBlock);
+      if (imageBlock) {
+        console.log(`[Chakra] Gambar berhasil diproses`);
+        messageContent.push(imageBlock);
+      } else {
+        console.log(`[Chakra] Gambar gagal diproses — lanjut tanpa gambar`);
+        messageContent.push({ type: "text", text: "Klien mengirimkan gambar tapi tidak bisa dibaca. Minta klien kirim ulang atau deskripsikan isi gambarnya." });
+      }
     }
 
     if (incomingMsg) {
@@ -279,18 +286,26 @@ async function sendChakraMessage(phoneNumberId, accessToken, to, text) {
 // ============================================
 async function downloadChakraImage(mediaId, accessToken) {
   try {
-    // Ambil URL gambar dari Meta
-    const metaRes = await fetch(`https://graph.facebook.com/v19.0/${mediaId}`, {
+    const pluginId = process.env.CHAKRA_PLUGIN_ID;
+    
+    // Pakai Chakra Media API — bukan Meta Graph API langsung
+    console.log(`[Image] Fetching media via Chakra API, ID: ${mediaId}`);
+    const chakraMediaUrl = `https://api.chakrahq.com/v1/ext/plugin/whatsapp/${pluginId}/media/${mediaId}`;
+    
+    const mediaRes = await fetch(chakraMediaUrl, {
       headers: { "Authorization": `Bearer ${accessToken}` }
     });
-    const metaData = await metaRes.json();
-    if (!metaData.url) return null;
 
-    // Download gambar
-    const imgRes = await fetch(metaData.url, {
-      headers: { "Authorization": `Bearer ${accessToken}` }
-    });
-    const buffer = await imgRes.buffer();
+    console.log(`[Image] Chakra media response status: ${mediaRes.status}`);
+    
+    if (!mediaRes.ok) {
+      const errText = await mediaRes.text();
+      console.error(`[Image] Chakra media error: ${errText}`);
+      return null;
+    }
+
+    const buffer = await mediaRes.buffer();
+    console.log(`[Image] Downloaded ${buffer.length} bytes`);
 
     // Kompres dengan Sharp
     const compressed = await sharp(buffer)
@@ -298,6 +313,7 @@ async function downloadChakraImage(mediaId, accessToken) {
       .jpeg({ quality: 85 })
       .toBuffer();
 
+    console.log(`[Image] Compressed to ${compressed.length} bytes`);
     return {
       type: "image",
       source: {
