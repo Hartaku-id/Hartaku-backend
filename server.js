@@ -238,10 +238,13 @@ app.post("/chakra/webhook", async (req, res) => {
 });
 
 // ============================================
-// HELPER: Kirim pesan via Chakra/Meta Cloud API
+// HELPER: Kirim pesan via Chakra API
 // ============================================
 async function sendChakraMessage(phoneNumberId, accessToken, to, text) {
-  const res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+  const pluginId = process.env.CHAKRA_PLUGIN_ID;
+  const apiVersion = "v19.0";
+  
+  const res = await fetch(`https://api.chakrahq.com/v1/ext/plugin/whatsapp/${pluginId}/${apiVersion}/${phoneNumberId}/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
