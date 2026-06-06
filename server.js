@@ -242,9 +242,13 @@ app.post("/chakra/webhook", async (req, res) => {
 // ============================================
 async function sendChakraMessage(phoneNumberId, accessToken, to, text) {
   const pluginId = process.env.CHAKRA_PLUGIN_ID;
-  const apiVersion = "v19.0";
   
-  const res = await fetch(`https://api.chakrahq.com/v1/ext/plugin/whatsapp/${pluginId}/${apiVersion}/${phoneNumberId}/messages`, {
+  // Coba dua format URL
+  const url = `https://api.chakrahq.com/v1/ext/plugin/whatsapp/${pluginId}/${phoneNumberId}/messages`;
+  
+  console.log(`[Chakra] Sending to URL: ${url}`);
+  
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -257,9 +261,18 @@ async function sendChakraMessage(phoneNumberId, accessToken, to, text) {
       text: { body: text }
     })
   });
-  const data = await res.json();
-  if (!res.ok) console.error("[Chakra] Gagal kirim pesan:", data);
-  return data;
+  
+  const rawText = await res.text();
+  console.log(`[Chakra] Response status: ${res.status}, body: ${rawText.substring(0, 200)}`);
+  
+  try {
+    const data = JSON.parse(rawText);
+    if (!res.ok) console.error("[Chakra] Gagal kirim pesan:", data);
+    return data;
+  } catch (e) {
+    console.error("[Chakra] Response bukan JSON:", rawText);
+    return null;
+  }
 }
 
 // ============================================
