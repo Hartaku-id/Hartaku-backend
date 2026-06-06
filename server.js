@@ -153,6 +153,150 @@ app.get("/health", (req, res) => {
 });
 
 // ============================================
+// POST /chakra/webhook — WhatsApp via Chakra Chat
+// ============================================
+app.post("/chakra/webhook", async (req, res) => {
+  res.status(200).send("OK");
+
+  try {
+    const body = req.body;
+
+    // Format Meta pass-through webhook
+    const entry = body?.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
+    const messages = value?.messages;
+
+    if (!messages || messages.length === 0) return;
+
+    const message = messages[0];
+    const from = message.from; // nomor pengirim, format: 628xxx
+    const incomingMsg = message?.text?.body?.trim() || "";
+    const messageType = message.type;
+
+    if (!from) return;
+
+    console.log(`[Chakra] Pesan dari ${from}: "${incomingMsg}" (type: ${messageType})`);
+
+    const sessionId = from;
+    const CHAKRA_PHONE = process.env.CHAKRA_PHONE_NUMBER_ID;
+    const CHAKRA_TOKEN = process.env.CHAKRA_ACCESS_TOKEN;
+
+    await getOrCreateSession(sessionId, { platform: "whatsapp", phoneNumber: sessionId });
+
+    // Cek daily limit
+    const limitCheck = await checkAndIncrementLimit(sessionId);
+    if (!limitCheck.allowed) {
+      console.log(`[Limit] Sesi ${sessionId} sudah mencapai batas 60 pesan hari ini`);
+      await sendChakraMessage(CHAKRA_PHONE, CHAKRA_TOKEN, from,
+        "Anda telah mencapai batas percakapan hari ini. Untuk melanjutkan tanpa batas, upgrade ke Hartaku Premier. Sampai jumpa besok.");
+      return;
+    }
+
+    const history = await getMessages(sessionId);
+    const messageContent = [];
+
+    // Proses gambar
+    if (messageType === "image" && message.image) {
+      const mediaId = message.image.id;
+      const imageBlock = await downloadChakraImage(mediaId, CHAKRA_TOKEN);
+      if (imageBlock) messageContent.push(imageBlock);
+    }
+
+    if (incomingMsg) {
+      messageContent.push({ type: "text", text: incomingMsg });
+    } else if (messageContent.length > 0) {
+      messageContent.push({ type: "text", text: "Saya mengirimkan gambar/dokumen ini untuk dianalisa." });
+    }
+
+    if (messageContent.length === 0) return;
+
+    const userMessage = messageContent.length === 1 && messageContent[0].type === "text"
+      ? messageContent[0].text
+      : messageContent;
+
+    const chatHistory = [...history, { role: "user", content: userMessage }];
+    const savedContent = incomingMsg || "[Gambar/Dokumen]";
+    await saveMessage(sessionId, "user", savedContent);
+
+    const kursContext = await fetchKursTerkini();
+    const reply = await chat(chatHistory, kursContext);
+    await saveMessage(sessionId, "assistant", reply);
+    await touchSession(sessionId);
+
+    // Kirim balasan via Chakra API
+    const parts = splitMessage(reply, 800);
+    for (const part of parts) {
+      await sendChakraMessage(CHAKRA_PHONE, CHAKRA_TOKEN, from, part);
+      if (parts.length > 1) await new Promise(r => setTimeout(r, 500));
+    }
+
+    console.log(`[Chakra] Balasan terkirim ke ${from} (${parts.length} bagian)`);
+  } catch (err) {
+    console.error("[Chakra] Error:", err);
+  }
+});
+
+// ============================================
+// HELPER: Kirim pesan via Chakra/Meta Cloud API
+// ============================================
+async function sendChakraMessage(phoneNumberId, accessToken, to, text) {
+  const res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: { body: text }
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) console.error("[Chakra] Gagal kirim pesan:", data);
+  return data;
+}
+
+// ============================================
+// HELPER: Download gambar dari Chakra/Meta
+// ============================================
+async function downloadChakraImage(mediaId, accessToken) {
+  try {
+    // Ambil URL gambar dari Meta
+    const metaRes = await fetch(`https://graph.facebook.com/v19.0/${mediaId}`, {
+      headers: { "Authorization": `Bearer ${accessToken}` }
+    });
+    const metaData = await metaRes.json();
+    if (!metaData.url) return null;
+
+    // Download gambar
+    const imgRes = await fetch(metaData.url, {
+      headers: { "Authorization": `Bearer ${accessToken}` }
+    });
+    const buffer = await imgRes.buffer();
+
+    // Kompres dengan Sharp
+    const compressed = await sharp(buffer)
+      .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+
+    return {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: compressed.toString("base64")
+      }
+    };
+  } catch (err) {
+    console.error("[Chakra] Error download gambar:", err);
+    return null;
+  }
+}
+
 // POST /twilio/webhook
 // ============================================
 app.post("/twilio/webhook", async (req, res) => {
