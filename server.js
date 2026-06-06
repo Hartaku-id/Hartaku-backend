@@ -243,8 +243,7 @@ app.post("/chakra/webhook", async (req, res) => {
 async function sendChakraMessage(phoneNumberId, accessToken, to, text) {
   const pluginId = process.env.CHAKRA_PLUGIN_ID;
   
-  // Coba dua format URL
-  const url = `https://api.chakrahq.com/v1/ext/plugin/whatsapp/${pluginId}/${phoneNumberId}/messages`;
+  const url = `https://api.chakrahq.com/v1/ext/plugin/whatsapp/${pluginId}/api/v19.0/${phoneNumberId}/messages`;
   
   console.log(`[Chakra] Sending to URL: ${url}`);
   
