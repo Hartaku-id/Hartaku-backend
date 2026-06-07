@@ -11,33 +11,197 @@ import fetch from "node-fetch";
 import { chat } from "./anthropic.js";
 
 // ============================================
-// FETCH KURS REAL-TIME — frankfurter.app (gratis, no API key)
+// FETCH DATA FINANSIAL — kurs, IHSG, emas, komoditas
 // ============================================
-let kursCache = { data: null, timestamp: 0 };
+let finansialCache = { data: null, timestamp: 0 };
 
 async function fetchKursTerkini() {
   const now = Date.now();
-  // Cache 1 jam — tidak perlu fetch setiap pesan
-  if (kursCache.data && (now - kursCache.timestamp) < 3600000) {
-    return kursCache.data;
+  // Cache 1 jam
+  if (finansialCache.data && (now - finansialCache.timestamp) < 3600000) {
+    return finansialCache.data;
   }
+
+  const results = {};
+
+  // 1. KURS — frankfurter.app (gratis, ECB data)
   try {
-    const res = await fetch("https://api.frankfurter.app/latest?from=USD&to=IDR,SGD,EUR,MYR");
-    const data = await res.json();
-    const rates = data.rates;
-    const kursText = `Data kurs terkini (sumber: ECB via Frankfurter, diupdate harian):
-- USD 1 = IDR ${rates.IDR?.toLocaleString('id-ID') || 'tidak tersedia'}
-- SGD 1 = IDR ${Math.round((rates.IDR / rates.SGD) || 0).toLocaleString('id-ID')}
-- EUR 1 = IDR ${Math.round((rates.IDR / rates.EUR) || 0).toLocaleString('id-ID')}
-- MYR 1 = IDR ${Math.round((rates.IDR / rates.MYR) || 0).toLocaleString('id-ID')}
-Catatan: Untuk kurs real-time per menit, klien dapat cek di Google Finance atau aplikasi bank.`;
-    kursCache = { data: kursText, timestamp: now };
-    return kursText;
-  } catch (err) {
-    console.error("[Kurs] Gagal fetch kurs:", err);
-    return "Data kurs sedang tidak tersedia — minta klien cek di Google Finance atau aplikasi bank untuk kurs terkini.";
+    const kursRes = await fetch("https://api.frankfurter.app/latest?from=USD&to=IDR,SGD,EUR,MYR,AUD,CNY,JPY");
+    const kursData = await kursRes.json();
+    results.kurs = kursData.rates;
+    results.kursDate = kursData.date;
+  } catch (e) {
+    console.error("[Finansial] Gagal fetch kurs:", e.message);
   }
+
+  // 2. IHSG, EMAS DUNIA, KOMODITAS, CRYPTO, INDEKS US — Yahoo Finance
+  const yahooSymbols = [
+    "^JKSE",      // IHSG
+    "^LQ45.JK",   // LQ45
+    "GC=F",       // Emas dunia (USD/troy oz)
+    "ANTM.JK",    // Antam proxy emas Indonesia
+    "PTBA.JK",    // Batu bara
+    "NIKL.JK",    // Nikel Indonesia
+    "TINS.JK",    // Timah Indonesia
+    "SIMP.JK",    // CPO/sawit proxy
+    "BTC-USD",    // Bitcoin
+    "ETH-USD",    // Ethereum
+    "^GSPC",      // S&P 500
+    "^IXIC",      // NASDAQ
+    "^DJI",       // Dow Jones
+  ];
+
+  try {
+    const yahooRes = await fetch(
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${yahooSymbols.join(",")}&fields=regularMarketPrice,regularMarketTime,currency,shortName`,
+      { headers: { "User-Agent": "Mozilla/5.0" } }
+    );
+    const yahooData = await yahooRes.json();
+    results.yahoo = yahooData?.quoteResponse?.result || [];
+  } catch (e) {
+    console.error("[Finansial] Gagal fetch Yahoo Finance:", e.message);
+    results.yahoo = [];
+  }
+
+  // Format output
+  const r = results.kurs || {};
+  const idr = r.IDR || 0;
+  const getYahoo = (symbol) => results.yahoo.find(q => q.symbol === symbol);
+
+  const ihsg = getYahoo("^JKSE");
+  const lq45 = getYahoo("^LQ45.JK");
+  const emasUSD = getYahoo("GC=F");
+  const antam = getYahoo("ANTM.JK");
+  const ptba = getYahoo("PTBA.JK");
+  const nikl = getYahoo("NIKL.JK");
+  const tins = getYahoo("TINS.JK");
+  const simp = getYahoo("SIMP.JK");
+  const btc = getYahoo("BTC-USD");
+  const eth = getYahoo("ETH-USD");
+  const sp500 = getYahoo("^GSPC");
+  const nasdaq = getYahoo("^IXIC");
+  const dji = getYahoo("^DJI");
+
+  // Hitung emas per gram
+  const emasIDRperGram = emasUSD && idr
+    ? Math.round((emasUSD.regularMarketPrice * idr) / 31.1035)
+    : null;
+
+  const formatIDR = (n) => n ? Math.round(n).toLocaleString('id-ID') : 'tidak tersedia';
+  const formatNum = (n, dec=0) => n ? n.toFixed(dec) : 'tidak tersedia';
+  const formatUSD = (n, dec=2) => n ? `USD ${n.toFixed(dec)}` : 'tidak tersedia';
+
+  const tanggal = results.kursDate || new Date().toISOString().split('T')[0];
+
+  const finansialText = `
+DATA FINANSIAL TERKINI (per ${tanggal}, sumber: ECB & Yahoo Finance):
+
+KURS (terhadap IDR):
+- USD 1 = Rp ${formatIDR(idr)}
+- SGD 1 = Rp ${formatIDR(idr / (r.SGD || 1))}
+- EUR 1 = Rp ${formatIDR(idr / (r.EUR || 1))}
+- AUD 1 = Rp ${formatIDR(idr / (r.AUD || 1))}
+- CNY 1 = Rp ${formatIDR(idr / (r.CNY || 1))}
+- JPY 100 = Rp ${formatIDR((idr / (r.JPY || 1)) * 100)}
+- MYR 1 = Rp ${formatIDR(idr / (r.MYR || 1))}
+
+PASAR MODAL INDONESIA:
+- IHSG: ${formatNum(ihsg?.regularMarketPrice, 2)}
+- LQ45: ${formatNum(lq45?.regularMarketPrice, 2)}
+
+PASAR MODAL US:
+- S&P 500: ${formatNum(sp500?.regularMarketPrice, 2)}
+- NASDAQ: ${formatNum(nasdaq?.regularMarketPrice, 2)}
+- Dow Jones: ${formatNum(dji?.regularMarketPrice, 2)}
+
+EMAS:
+- Emas dunia: ${formatUSD(emasUSD?.regularMarketPrice)}/troy oz
+- Estimasi emas IDR: Rp ${emasIDRperGram ? formatIDR(emasIDRperGram) : 'tidak tersedia'}/gram
+- ANTM (Antam): Rp ${formatIDR(antam?.regularMarketPrice)}/lembar
+
+KRIPTO:
+- Bitcoin (BTC): ${formatUSD(btc?.regularMarketPrice)}
+- Ethereum (ETH): ${formatUSD(eth?.regularMarketPrice)}
+
+KOMODITAS INDONESIA:
+- Batu bara (PTBA): Rp ${formatIDR(ptba?.regularMarketPrice)}/lembar
+- Nikel (NIKL): Rp ${formatIDR(nikl?.regularMarketPrice)}/lembar
+- Timah (TINS): Rp ${formatIDR(tins?.regularMarketPrice)}/lembar
+- Sawit/CPO (SIMP): Rp ${formatIDR(simp?.regularMarketPrice)}/lembar
+
+Catatan: Data ini adalah harga penutupan terakhir, bukan real-time. Untuk data terkini silakan cek di aplikasi broker atau Google Finance.`.trim();
+
+  finansialCache = { data: finansialText, timestamp: now };
+  console.log("[Finansial] Data berhasil diupdate");
+  return finansialText;
 }
+
+// ============================================
+// FETCH BERITA TERKINI — NewsAPI + RSS backup
+// ============================================
+let beritaCache = { data: null, timestamp: 0 };
+
+async function fetchBeritaTerkini() {
+  const now = Date.now();
+  // Cache 2 jam
+  if (beritaCache.data && (now - beritaCache.timestamp) < 7200000) {
+    return beritaCache.data;
+  }
+
+  const beritaList = [];
+
+  // Coba NewsAPI kalau ada API key
+  const newsApiKey = process.env.NEWS_API_KEY;
+  if (newsApiKey) {
+    try {
+      // Berita ekonomi Indonesia
+      const idRes = await fetch(
+        `https://newsapi.org/v2/top-headlines?country=id&category=business&pageSize=3&apiKey=${newsApiKey}`,
+        { headers: { "User-Agent": "Mozilla/5.0" } }
+      );
+      const idData = await idRes.json();
+      if (idData.articles) {
+        idData.articles.forEach(a => {
+          beritaList.push(`[Indonesia] ${a.title} — ${a.source?.name || ''}`);
+        });
+      }
+
+      // Berita internasional ekonomi/geopolitik
+      const intRes = await fetch(
+        `https://newsapi.org/v2/top-headlines?category=business&language=en&pageSize=3&apiKey=${newsApiKey}`,
+        { headers: { "User-Agent": "Mozilla/5.0" } }
+      );
+      const intData = await intRes.json();
+      if (intData.articles) {
+        intData.articles.forEach(a => {
+          beritaList.push(`[Internasional] ${a.title} — ${a.source?.name || ''}`);
+        });
+      }
+    } catch (e) {
+      console.error("[Berita] Gagal fetch NewsAPI:", e.message);
+    }
+  }
+
+  if (beritaList.length === 0) {
+    beritaCache = { data: null, timestamp: now };
+    return null;
+  }
+
+  const tanggal = new Date().toLocaleDateString('id-ID', {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta'
+  });
+
+  const beritaText = `
+BERITA TERKINI (per ${tanggal}):
+${beritaList.map((b, i) => `${i + 1}. ${b}`).join('\n')}
+
+Catatan: Gunakan berita ini sebagai konteks saat relevan dengan diskusi klien.`.trim();
+
+  beritaCache = { data: beritaText, timestamp: now };
+  console.log(`[Berita] ${beritaList.length} berita berhasil diupdate`);
+  return beritaText;
+}
+
 import {
   getOrCreateSession,
   checkAndIncrementLimit,
@@ -228,7 +392,9 @@ app.post("/chakra/webhook", async (req, res) => {
     await saveMessage(sessionId, "user", savedContent);
 
     const kursContext = await fetchKursTerkini();
-    const reply = await chat(chatHistory, kursContext);
+    const beritaContext = await fetchBeritaTerkini();
+    const fullContext = beritaContext ? `${kursContext}\n\n${beritaContext}` : kursContext;
+    const reply = await chat(chatHistory, fullContext);
     await saveMessage(sessionId, "assistant", reply);
     await touchSession(sessionId);
 
@@ -307,10 +473,10 @@ async function downloadChakraImage(mediaId, accessToken) {
     const buffer = Buffer.from(arrayBuffer);
     console.log(`[Image] Downloaded ${buffer.length} bytes`);
 
-    // Kompres dengan Sharp
+    // Kompres dengan Sharp — kualitas tinggi untuk keterbacaan dokumen
     const compressed = await sharp(buffer)
-      .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 85 })
+      .resize(1600, 1600, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 95 })
       .toBuffer();
 
     console.log(`[Image] Compressed to ${compressed.length} bytes`);
@@ -405,7 +571,9 @@ app.post("/twilio/webhook", async (req, res) => {
     await saveMessage(sessionId, "user", savedContent);
 
     const kursContext = await fetchKursTerkini();
-    const reply = await chat(messages, kursContext);
+    const beritaContext = await fetchBeritaTerkini();
+    const fullContext = beritaContext ? `${kursContext}\n\n${beritaContext}` : kursContext;
+    const reply = await chat(messages, fullContext);
     await saveMessage(sessionId, "assistant", reply);
     await touchSession(sessionId);
 
