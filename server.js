@@ -62,31 +62,37 @@ async function fetchKursTerkini() {
     results.crypto = {};
   }
 
-  // 3. EMAS DUNIA — Metals.live (gratis, no API key)
+  // 3. EMAS DUNIA — coba beberapa sumber
   try {
+    // Coba metals-api.com (gratis, no key)
     const goldRes = await fetch(
-      "https://metals.live/api/v1/spot",
+      "https://api.metals.live/v1/spot/gold",
       { headers: { "Accept": "application/json" } }
     );
+    const contentType = goldRes.headers.get('content-type') || '';
+    if (!contentType.includes('json')) throw new Error('Bukan JSON');
     const goldData = await goldRes.json();
-    // goldData adalah array [{metal: "gold", price: 2300, ...}]
-    results.gold = Array.isArray(goldData) ? goldData : [];
-    console.log(`[Metals] ${results.gold.length} logam berhasil`);
+    // Response: {price: 2300.5} or [{metal: "gold", price: 2300.5}]
+    if (goldData.price) {
+      results.goldUSD = goldData.price;
+    } else if (Array.isArray(goldData) && goldData[0]?.price) {
+      results.goldUSD = goldData[0].price;
+    }
+    console.log(`[Gold] Harga emas: ${results.goldUSD}`);
   } catch (e) {
-    console.error("[Finansial] Gagal fetch Metals.live:", e.message);
-    results.gold = [];
+    console.error("[Finansial] Gagal fetch gold API:", e.message);
+    // Fallback: hitung dari frankfurter XAU kalau tersedia
+    results.goldUSD = null;
   }
 
   // 4. SAHAM INDONESIA & INDEKS US — Alpha Vantage
   const alphaKey = process.env.ALPHA_VANTAGE_KEY;
   results.stocks = {};
   if (alphaKey) {
+    // Alpha Vantage: IHSG pakai symbol "^JKSE" tidak work, pakai IDX
     const stockSymbols = [
-      { symbol: "JKSE", label: "IHSG" },
-      { symbol: "ANTM.JK", label: "Antam" },
-      { symbol: "PTBA.JK", label: "Batu Bara (PTBA)" },
-      { symbol: "SPX", label: "S&P 500" },
-      { symbol: "IXIC", label: "NASDAQ" },
+      { symbol: "SPY", label: "S&P 500 (ETF)" },
+      { symbol: "QQQ", label: "NASDAQ (ETF)" },
     ];
     for (const s of stockSymbols) {
       try {
@@ -112,8 +118,7 @@ async function fetchKursTerkini() {
   const ethUSD = results.crypto?.ethereum?.usd;
 
   // Emas
-  const goldSpot = results.gold?.find(g => g.metal === "XAU" || g.metal === "gold");
-  const goldUSD = goldSpot?.price || null;
+  const goldUSD = results.goldUSD || null;
   const emasIDRperGram = goldUSD && idr ? Math.round((goldUSD * idr) / 31.1035) : null;
 
   const formatIDR = (n) => n ? Math.round(n).toLocaleString('id-ID') : 'tidak tersedia';
