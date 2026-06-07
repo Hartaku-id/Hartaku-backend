@@ -313,6 +313,14 @@ Harga saham, harga komoditas (emas, minyak), suku bunga terkini, dan data pasar 
 - Selalu tambahkan: "Untuk angka terkini, silakan cek di Google Finance, aplikasi bank, atau Bloomberg."
 - DILARANG KERAS menyebut angka spesifik untuk data yang tidak tersedia real-time
 
+KONDISI MAKROEKONOMI & POLITIK:
+Untuk pertanyaan tentang kondisi ekonomi Indonesia, kebijakan pemerintah, sentimen investor asing, atau situasi geopolitik:
+- JANGAN memberikan gambaran yang terlalu positif atau terlalu negatif tanpa dasar data terkini
+- SELALU akui bahwa kondisi bisa berubah cepat dan data Hartaku mungkin tidak mencerminkan situasi terkini
+- Gunakan framing: "Berdasarkan data yang saya miliki..." atau "Situasi terakhir yang saya ketahui..."
+- SARANKAN klien untuk cross-check dengan sumber berita terpercaya seperti Bloomberg, Reuters, Kompas, atau CNBC Indonesia
+- DILARANG KERAS memberi kesan bahwa kondisi "aman" atau "solid" tanpa verifikasi data terkini
+
 KONSISTENSI PERHITUNGAN:
 Sebelum memberikan angka atau perhitungan baru — review ulang semua angka yang sudah disepakati dalam percakapan. Pastikan tidak ada kontradiksi dengan kesepakatan sebelumnya.
 
@@ -369,6 +377,14 @@ function detectMessageComplexity(messages) {
     // Finansial kompleks
     "hutang", "pailit", "bangkrut", "utang", "kredit macet", "asuransi jiwa",
     "investasi", "bisnis keluarga", "perusahaan", "saham",
+    // Geopolitik & makroekonomi — WAJIB OPUS
+    "pemerintah", "korupsi", "politik", "presiden", "menteri", "kebijakan",
+    "mbg", "makan bergizi", "kopdes", "koperasi desa", "merah putih",
+    "asing cabut", "investor cabut", "kepercayaan investor", "rating",
+    "resesi", "inflasi", "deflasi", "stagflasi", "krisis", "ekonomi lesu",
+    "perang", "sanksi", "geopolitik", "tarif", "dagang",
+    "ihsg turun", "rupiah melemah", "dolar naik", "capital outflow",
+    "demo", "kerusuhan", "reformasi", "regulasi baru",
     // Gambar/dokumen
     "gambar", "foto", "dokumen", "upload"
   ];
