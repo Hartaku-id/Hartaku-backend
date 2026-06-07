@@ -70,8 +70,12 @@ async function fetchKursTerkini() {
       `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${yahooSymbols.join(",")}&fields=regularMarketPrice,regularMarketTime,currency,shortName`,
       { headers: { "User-Agent": "Mozilla/5.0" } }
     );
-    const yahooData = await yahooRes.json();
+    console.log(`[Yahoo] Status: ${yahooRes.status}`);
+    const yahooText = await yahooRes.text();
+    console.log(`[Yahoo] Response preview: ${yahooText.substring(0, 100)}`);
+    const yahooData = JSON.parse(yahooText);
     results.yahoo = yahooData?.quoteResponse?.result || [];
+    console.log(`[Yahoo] Got ${results.yahoo.length} quotes`);
   } catch (e) {
     console.error("[Finansial] Gagal fetch Yahoo Finance:", e.message);
     results.yahoo = [];
