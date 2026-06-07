@@ -90,15 +90,12 @@ async function fetchKursTerkini() {
         `https://api.datasectors.com/api/chart-saham/IHSG/daily/latest?from=${sevenDaysAgo}&to=${today}`,
         { headers }
       );
-      const ihsgText = await ihsgRes.text();
-      console.log(`[DataSectors] IHSG status: ${ihsgRes.status}, response: ${ihsgText.substring(0, 200)}`);
-      const ihsgData = JSON.parse(ihsgText);
-      if (ihsgData.success && ihsgData.data?.length > 0) {
-        const latest = ihsgData.data[ihsgData.data.length - 1];
-        results.ihsg = { close: latest.close, date: latest.datetime, change: latest.change_percent };
-        console.log(`[DataSectors] IHSG: ${results.ihsg.close}`);
-      } else {
-        console.log(`[DataSectors] IHSG data kosong atau gagal:`, JSON.stringify(ihsgData).substring(0, 200));
+      const ihsgData = await ihsgRes.json();
+      const chartbit = ihsgData?.data?.data?.data?.chartbit;
+      if (chartbit && chartbit.length > 0) {
+        const latest = chartbit[chartbit.length - 1];
+        results.ihsg = { close: latest.close, date: latest.date, open: latest.open, high: latest.high, low: latest.low };
+        console.log(`[DataSectors] IHSG: ${results.ihsg.close} (${results.ihsg.date})`);
       }
     } catch (e) {
       console.error("[DataSectors] Gagal fetch IHSG:", e.message);
@@ -113,9 +110,10 @@ async function fetchKursTerkini() {
           { headers }
         );
         const data = await res.json();
-        if (data.success && data.data?.length > 0) {
-          const latest = data.data[data.data.length - 1];
-          results.sahamIndo[kode] = { close: latest.close, change: latest.change_percent };
+        const cb = data?.data?.data?.data?.chartbit;
+        if (cb && cb.length > 0) {
+          const latest = cb[cb.length - 1];
+          results.sahamIndo[kode] = { close: latest.close, date: latest.date };
         }
       } catch (e) { /* skip */ }
     }
