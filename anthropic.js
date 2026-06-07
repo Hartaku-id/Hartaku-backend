@@ -440,6 +440,7 @@ export async function chat(messages, kursContext = null) {
   const model = complexity === "opus" ? "claude-opus-4-6" : "claude-sonnet-4-5";
 
   console.log(`[AI] Model: ${model} (${complexity})`);
+  console.log(`[AI] Context preview: ${dynamicContext.substring(0, 300)}`);
 
   // Gabungkan tanggal + kurs sebagai context dinamis
   const dynamicContext = kursContext
