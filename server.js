@@ -48,71 +48,82 @@ async function fetchKursTerkini() {
     }
   }
 
-  // 2. IHSG, EMAS DUNIA, KOMODITAS, CRYPTO, INDEKS US — Yahoo Finance
-  const yahooSymbols = [
-    "^JKSE",      // IHSG
-    "^LQ45.JK",   // LQ45
-    "GC=F",       // Emas dunia (USD/troy oz)
-    "ANTM.JK",    // Antam proxy emas Indonesia
-    "PTBA.JK",    // Batu bara
-    "NIKL.JK",    // Nikel Indonesia
-    "TINS.JK",    // Timah Indonesia
-    "SIMP.JK",    // CPO/sawit proxy
-    "BTC-USD",    // Bitcoin
-    "ETH-USD",    // Ethereum
-    "^GSPC",      // S&P 500
-    "^IXIC",      // NASDAQ
-    "^DJI",       // Dow Jones
-  ];
-
+  // 2. CRYPTO — CoinGecko (gratis, sangat reliable, no API key)
   try {
-    const yahooRes = await fetch(
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${yahooSymbols.join(",")}&fields=regularMarketPrice,regularMarketTime,currency,shortName`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
+    const cgRes = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd",
+      { headers: { "Accept": "application/json" } }
     );
-    console.log(`[Yahoo] Status: ${yahooRes.status}`);
-    const yahooText = await yahooRes.text();
-    console.log(`[Yahoo] Response preview: ${yahooText.substring(0, 100)}`);
-    const yahooData = JSON.parse(yahooText);
-    results.yahoo = yahooData?.quoteResponse?.result || [];
-    console.log(`[Yahoo] Got ${results.yahoo.length} quotes`);
+    const cgData = await cgRes.json();
+    results.crypto = cgData;
+    console.log("[CoinGecko] Crypto berhasil");
   } catch (e) {
-    console.error("[Finansial] Gagal fetch Yahoo Finance:", e.message);
-    results.yahoo = [];
+    console.error("[Finansial] Gagal fetch CoinGecko:", e.message);
+    results.crypto = {};
+  }
+
+  // 3. EMAS DUNIA — Metals.live (gratis, no API key)
+  try {
+    const goldRes = await fetch(
+      "https://metals.live/api/v1/spot",
+      { headers: { "Accept": "application/json" } }
+    );
+    const goldData = await goldRes.json();
+    // goldData adalah array [{metal: "gold", price: 2300, ...}]
+    results.gold = Array.isArray(goldData) ? goldData : [];
+    console.log(`[Metals] ${results.gold.length} logam berhasil`);
+  } catch (e) {
+    console.error("[Finansial] Gagal fetch Metals.live:", e.message);
+    results.gold = [];
+  }
+
+  // 4. SAHAM INDONESIA & INDEKS US — Alpha Vantage
+  const alphaKey = process.env.ALPHA_VANTAGE_KEY;
+  results.stocks = {};
+  if (alphaKey) {
+    const stockSymbols = [
+      { symbol: "JKSE", label: "IHSG" },
+      { symbol: "ANTM.JK", label: "Antam" },
+      { symbol: "PTBA.JK", label: "Batu Bara (PTBA)" },
+      { symbol: "SPX", label: "S&P 500" },
+      { symbol: "IXIC", label: "NASDAQ" },
+    ];
+    for (const s of stockSymbols) {
+      try {
+        const avRes = await fetch(
+          `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${s.symbol}&apikey=${alphaKey}`
+        );
+        const avData = await avRes.json();
+        const price = avData["Global Quote"]?.["05. price"];
+        if (price) results.stocks[s.label] = parseFloat(price);
+      } catch (e) {
+        // skip
+      }
+    }
+    console.log(`[Alpha] ${Object.keys(results.stocks).length} saham berhasil`);
   }
 
   // Format output
   const r = results.kurs || {};
   const idr = r.IDR || 0;
-  const getYahoo = (symbol) => results.yahoo.find(q => q.symbol === symbol);
 
-  const ihsg = getYahoo("^JKSE");
-  const lq45 = getYahoo("^LQ45.JK");
-  const emasUSD = getYahoo("GC=F");
-  const antam = getYahoo("ANTM.JK");
-  const ptba = getYahoo("PTBA.JK");
-  const nikl = getYahoo("NIKL.JK");
-  const tins = getYahoo("TINS.JK");
-  const simp = getYahoo("SIMP.JK");
-  const btc = getYahoo("BTC-USD");
-  const eth = getYahoo("ETH-USD");
-  const sp500 = getYahoo("^GSPC");
-  const nasdaq = getYahoo("^IXIC");
-  const dji = getYahoo("^DJI");
+  // Crypto
+  const btcUSD = results.crypto?.bitcoin?.usd;
+  const ethUSD = results.crypto?.ethereum?.usd;
 
-  // Hitung emas per gram
-  const emasIDRperGram = emasUSD && idr
-    ? Math.round((emasUSD.regularMarketPrice * idr) / 31.1035)
-    : null;
+  // Emas
+  const goldSpot = results.gold?.find(g => g.metal === "XAU" || g.metal === "gold");
+  const goldUSD = goldSpot?.price || null;
+  const emasIDRperGram = goldUSD && idr ? Math.round((goldUSD * idr) / 31.1035) : null;
 
   const formatIDR = (n) => n ? Math.round(n).toLocaleString('id-ID') : 'tidak tersedia';
-  const formatNum = (n, dec=0) => n ? n.toFixed(dec) : 'tidak tersedia';
-  const formatUSD = (n, dec=2) => n ? `USD ${n.toFixed(dec)}` : 'tidak tersedia';
+  const formatUSD = (n, dec=2) => n ? `USD ${Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec})}` : 'tidak tersedia';
+  const formatNum = (n, dec=2) => n ? Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec}) : 'tidak tersedia';
 
   const tanggal = results.kursDate || new Date().toISOString().split('T')[0];
 
   const finansialText = `
-DATA FINANSIAL TERKINI (per ${tanggal}, sumber: ECB & Yahoo Finance):
+DATA FINANSIAL TERKINI (per ${tanggal}):
 
 KURS (terhadap IDR):
 - USD 1 = Rp ${formatIDR(idr)}
@@ -123,31 +134,18 @@ KURS (terhadap IDR):
 - JPY 100 = Rp ${formatIDR((idr / (r.JPY || 1)) * 100)}
 - MYR 1 = Rp ${formatIDR(idr / (r.MYR || 1))}
 
-PASAR MODAL INDONESIA:
-- IHSG: ${formatNum(ihsg?.regularMarketPrice, 2)}
-- LQ45: ${formatNum(lq45?.regularMarketPrice, 2)}
-
-PASAR MODAL US:
-- S&P 500: ${formatNum(sp500?.regularMarketPrice, 2)}
-- NASDAQ: ${formatNum(nasdaq?.regularMarketPrice, 2)}
-- Dow Jones: ${formatNum(dji?.regularMarketPrice, 2)}
-
 EMAS:
-- Emas dunia: ${formatUSD(emasUSD?.regularMarketPrice)}/troy oz
+- Emas dunia: ${formatUSD(goldUSD)}/troy oz
 - Estimasi emas IDR: Rp ${emasIDRperGram ? formatIDR(emasIDRperGram) : 'tidak tersedia'}/gram
-- ANTM (Antam): Rp ${formatIDR(antam?.regularMarketPrice)}/lembar
 
 KRIPTO:
-- Bitcoin (BTC): ${formatUSD(btc?.regularMarketPrice)}
-- Ethereum (ETH): ${formatUSD(eth?.regularMarketPrice)}
+- Bitcoin (BTC): ${formatUSD(btcUSD)}
+- Ethereum (ETH): ${formatUSD(ethUSD)}
 
-KOMODITAS INDONESIA:
-- Batu bara (PTBA): Rp ${formatIDR(ptba?.regularMarketPrice)}/lembar
-- Nikel (NIKL): Rp ${formatIDR(nikl?.regularMarketPrice)}/lembar
-- Timah (TINS): Rp ${formatIDR(tins?.regularMarketPrice)}/lembar
-- Sawit/CPO (SIMP): Rp ${formatIDR(simp?.regularMarketPrice)}/lembar
+PASAR MODAL & SAHAM:
+${Object.entries(results.stocks || {}).map(([k, v]) => `- ${k}: ${formatNum(v)}`).join('\n') || '- Data tidak tersedia (butuh Alpha Vantage key)'}
 
-Catatan: Data ini adalah harga penutupan terakhir, bukan real-time. Untuk data terkini silakan cek di aplikasi broker atau Google Finance.`.trim();
+Catatan: Data kurs diupdate harian (ECB). Emas & crypto near real-time. Saham adalah harga penutupan terakhir.`.trim();
 
   finansialCache = { data: finansialText, timestamp: now };
   console.log("[Finansial] Data berhasil diupdate");
