@@ -48,7 +48,7 @@ async function fetchKursTerkini() {
     }
   }
 
-  // 2. CRYPTO — CoinGecko (gratis, sangat reliable, no API key)
+  // 2. CRYPTO — CoinGecko (gratis, reliable, no API key)
   try {
     const cgRes = await fetch(
       "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd",
@@ -56,26 +56,22 @@ async function fetchKursTerkini() {
     );
     const cgData = await cgRes.json();
     results.crypto = cgData;
-    console.log("[CoinGecko] Crypto berhasil");
+    console.log(`[CoinGecko] BTC: ${cgData?.bitcoin?.usd}, ETH: ${cgData?.ethereum?.usd}`);
   } catch (e) {
     console.error("[Finansial] Gagal fetch CoinGecko:", e.message);
     results.crypto = {};
   }
 
-  // 3. EMAS DUNIA — pakai frankfurter XAU/USD
+  // 3. EMAS DUNIA — gold-api.com (free, no API key required)
   try {
-    const goldRes = await fetch(
-      "https://api.frankfurter.app/latest?from=XAU&to=USD",
-      { headers: { "Accept": "application/json" } }
-    );
-    const contentType = goldRes.headers.get('content-type') || '';
-    if (!contentType.includes('json')) throw new Error('Bukan JSON');
+    const goldRes = await fetch("https://api.gold-api.com/price/XAU", {
+      headers: { "Accept": "application/json" }
+    });
     const goldData = await goldRes.json();
-    // XAU ke USD: 1 troy oz emas = berapa USD
-    results.goldUSD = goldData?.rates?.USD || null;
+    results.goldUSD = goldData?.price || null;
     console.log(`[Gold] Harga emas: USD ${results.goldUSD}/troy oz`);
   } catch (e) {
-    console.error("[Finansial] Gagal fetch gold:", e.message);
+    console.error("[Finansial] Gagal fetch gold-api:", e.message);
     results.goldUSD = null;
   }
 
