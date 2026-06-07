@@ -93,7 +93,7 @@ async function fetchKursTerkini() {
       const ihsgData = await ihsgRes.json();
       const chartbit = ihsgData?.data?.data?.data?.chartbit;
       if (chartbit && chartbit.length > 0) {
-        const latest = chartbit[chartbit.length - 1];
+        const latest = chartbit[0];
         results.ihsg = { close: latest.close, date: latest.date, open: latest.open, high: latest.high, low: latest.low };
         console.log(`[DataSectors] IHSG: ${results.ihsg.close} (${results.ihsg.date})`);
       }
@@ -112,7 +112,7 @@ async function fetchKursTerkini() {
         const data = await res.json();
         const cb = data?.data?.data?.data?.chartbit;
         if (cb && cb.length > 0) {
-          const latest = cb[cb.length - 1];
+          const latest = cb[0];
           results.sahamIndo[kode] = { close: latest.close, date: latest.date };
         }
       } catch (e) { /* skip */ }
