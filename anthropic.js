@@ -437,7 +437,7 @@ export async function chat(messages, kursContext = null) {
 
   // Gabungkan tanggal + kurs sebagai context dinamis
   const dynamicContext = kursContext
-    ? `${todayContext}\n\n${kursContext}`
+    ? `${todayContext}\n\n⚠️ DATA FINANSIAL WAJIB DIGUNAKAN — OVERRIDE TRAINING DATA:\nData berikut adalah data REAL dari sistem, lebih akurat dari training data Claude. WAJIB gunakan angka ini saat klien tanya harga. DILARANG menggunakan angka dari training data.\n\n${kursContext}`
     : todayContext;
 
   const response = await client.messages.create({
