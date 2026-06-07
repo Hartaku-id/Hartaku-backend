@@ -90,11 +90,15 @@ async function fetchKursTerkini() {
         `https://api.datasectors.com/api/chart-saham/IHSG/daily/latest?from=${sevenDaysAgo}&to=${today}`,
         { headers }
       );
-      const ihsgData = await ihsgRes.json();
+      const ihsgText = await ihsgRes.text();
+      console.log(`[DataSectors] IHSG status: ${ihsgRes.status}, response: ${ihsgText.substring(0, 200)}`);
+      const ihsgData = JSON.parse(ihsgText);
       if (ihsgData.success && ihsgData.data?.length > 0) {
         const latest = ihsgData.data[ihsgData.data.length - 1];
         results.ihsg = { close: latest.close, date: latest.datetime, change: latest.change_percent };
-        console.log(`[DataSectors] IHSG: ${results.ihsg.close} (${results.ihsg.date})`);
+        console.log(`[DataSectors] IHSG: ${results.ihsg.close}`);
+      } else {
+        console.log(`[DataSectors] IHSG data kosong atau gagal:`, JSON.stringify(ihsgData).substring(0, 200));
       }
     } catch (e) {
       console.error("[DataSectors] Gagal fetch IHSG:", e.message);
