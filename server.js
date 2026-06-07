@@ -62,26 +62,20 @@ async function fetchKursTerkini() {
     results.crypto = {};
   }
 
-  // 3. EMAS DUNIA — coba beberapa sumber
+  // 3. EMAS DUNIA — pakai frankfurter XAU/USD
   try {
-    // Coba metals-api.com (gratis, no key)
     const goldRes = await fetch(
-      "https://api.metals.live/v1/spot/gold",
+      "https://api.frankfurter.app/latest?from=XAU&to=USD",
       { headers: { "Accept": "application/json" } }
     );
     const contentType = goldRes.headers.get('content-type') || '';
     if (!contentType.includes('json')) throw new Error('Bukan JSON');
     const goldData = await goldRes.json();
-    // Response: {price: 2300.5} or [{metal: "gold", price: 2300.5}]
-    if (goldData.price) {
-      results.goldUSD = goldData.price;
-    } else if (Array.isArray(goldData) && goldData[0]?.price) {
-      results.goldUSD = goldData[0].price;
-    }
-    console.log(`[Gold] Harga emas: ${results.goldUSD}`);
+    // XAU ke USD: 1 troy oz emas = berapa USD
+    results.goldUSD = goldData?.rates?.USD || null;
+    console.log(`[Gold] Harga emas: USD ${results.goldUSD}/troy oz`);
   } catch (e) {
-    console.error("[Finansial] Gagal fetch gold API:", e.message);
-    // Fallback: hitung dari frankfurter XAU kalau tersedia
+    console.error("[Finansial] Gagal fetch gold:", e.message);
     results.goldUSD = null;
   }
 
