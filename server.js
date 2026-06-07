@@ -174,8 +174,9 @@ async function fetchBeritaTerkini() {
   // RSS feeds Indonesia — gratis, no API key
   const rssFeeds = [
     { url: "https://rss.kompas.com/money", label: "Kompas Money" },
+    { url: "https://rss.kompas.com/nasional", label: "Kompas Nasional" },
     { url: "https://www.cnbcindonesia.com/rss", label: "CNBC Indonesia" },
-    { url: "https://bisnis.com/rss/ekonomi-bisnis", label: "Bisnis.com" },
+    { url: "https://rss.tempo.co/nasional", label: "Tempo" },
   ];
 
   for (const feed of rssFeeds) {
