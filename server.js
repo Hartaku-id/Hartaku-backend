@@ -24,14 +24,28 @@ async function fetchKursTerkini() {
 
   const results = {};
 
-  // 1. KURS — frankfurter.app (gratis, ECB data)
+  // 1. KURS — coba frankfurter.app dulu, fallback ke exchangerate-api
   try {
     const kursRes = await fetch("https://api.frankfurter.app/latest?from=USD&to=IDR,SGD,EUR,MYR,AUD,CNY,JPY");
+    const contentType = kursRes.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) throw new Error('Bukan JSON');
     const kursData = await kursRes.json();
     results.kurs = kursData.rates;
     results.kursDate = kursData.date;
   } catch (e) {
-    console.error("[Finansial] Gagal fetch kurs:", e.message);
+    console.error("[Finansial] Gagal fetch frankfurter, coba fallback:", e.message);
+    // Fallback: exchangerate-api.com (gratis, no key)
+    try {
+      const fallbackRes = await fetch("https://open.er-api.com/v6/latest/USD");
+      const fallbackData = await fallbackRes.json();
+      if (fallbackData.rates) {
+        results.kurs = fallbackData.rates;
+        results.kursDate = new Date().toISOString().split('T')[0];
+        console.log("[Finansial] Kurs dari fallback API berhasil");
+      }
+    } catch (e2) {
+      console.error("[Finansial] Fallback kurs juga gagal:", e2.message);
+    }
   }
 
   // 2. IHSG, EMAS DUNIA, KOMODITAS, CRYPTO, INDEKS US — Yahoo Finance
@@ -137,7 +151,7 @@ Catatan: Data ini adalah harga penutupan terakhir, bukan real-time. Untuk data t
 }
 
 // ============================================
-// FETCH BERITA TERKINI — NewsAPI + RSS backup
+// FETCH BERITA TERKINI — RSS Feed Indonesia
 // ============================================
 let beritaCache = { data: null, timestamp: 0 };
 
@@ -150,35 +164,33 @@ async function fetchBeritaTerkini() {
 
   const beritaList = [];
 
-  // Coba NewsAPI kalau ada API key
-  const newsApiKey = process.env.NEWS_API_KEY;
-  if (newsApiKey) {
-    try {
-      // Berita ekonomi Indonesia
-      const idRes = await fetch(
-        `https://newsapi.org/v2/top-headlines?country=id&category=business&pageSize=3&apiKey=${newsApiKey}`,
-        { headers: { "User-Agent": "Mozilla/5.0" } }
-      );
-      const idData = await idRes.json();
-      if (idData.articles) {
-        idData.articles.forEach(a => {
-          beritaList.push(`[Indonesia] ${a.title} — ${a.source?.name || ''}`);
-        });
-      }
+  // RSS feeds Indonesia — gratis, no API key
+  const rssFeeds = [
+    { url: "https://rss.kompas.com/money", label: "Kompas Money" },
+    { url: "https://www.cnbcindonesia.com/rss", label: "CNBC Indonesia" },
+    { url: "https://bisnis.com/rss/ekonomi-bisnis", label: "Bisnis.com" },
+  ];
 
-      // Berita internasional ekonomi/geopolitik
-      const intRes = await fetch(
-        `https://newsapi.org/v2/top-headlines?category=business&language=en&pageSize=3&apiKey=${newsApiKey}`,
-        { headers: { "User-Agent": "Mozilla/5.0" } }
-      );
-      const intData = await intRes.json();
-      if (intData.articles) {
-        intData.articles.forEach(a => {
-          beritaList.push(`[Internasional] ${a.title} — ${a.source?.name || ''}`);
-        });
-      }
+  for (const feed of rssFeeds) {
+    try {
+      const res = await fetch(feed.url, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        signal: AbortSignal.timeout(5000)
+      });
+      const text = await res.text();
+      
+      // Parse judul dari RSS XML secara sederhana
+      const matches = text.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/g) || [];
+      
+      // Skip judul pertama (nama feed) dan ambil 2 berita
+      const titles = matches.slice(1, 3).map(m => {
+        return m.replace(/<title><!\[CDATA\[/, '').replace(/\]\]><\/title>/, '')
+                .replace(/<title>/, '').replace(/<\/title>/, '').trim();
+      }).filter(t => t.length > 10 && t.length < 200);
+      
+      titles.forEach(t => beritaList.push(`[${feed.label}] ${t}`));
     } catch (e) {
-      console.error("[Berita] Gagal fetch NewsAPI:", e.message);
+      console.error(`[Berita] Gagal fetch ${feed.label}:`, e.message);
     }
   }
 
@@ -192,10 +204,10 @@ async function fetchBeritaTerkini() {
   });
 
   const beritaText = `
-BERITA TERKINI (per ${tanggal}):
+BERITA EKONOMI TERKINI INDONESIA (per ${tanggal}):
 ${beritaList.map((b, i) => `${i + 1}. ${b}`).join('\n')}
 
-Catatan: Gunakan berita ini sebagai konteks saat relevan dengan diskusi klien.`.trim();
+Gunakan berita ini sebagai konteks saat relevan dengan diskusi klien tentang ekonomi, kebijakan, atau kondisi pasar.`.trim();
 
   beritaCache = { data: beritaText, timestamp: now };
   console.log(`[Berita] ${beritaList.length} berita berhasil diupdate`);
