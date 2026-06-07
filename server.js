@@ -82,12 +82,12 @@ async function fetchKursTerkini() {
   if (datasectorsKey) {
     const headers = { "X-API-Key": datasectorsKey, "Accept": "application/json" };
     const today = new Date().toISOString().split('T')[0];
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600000).toISOString().split('T')[0];
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600000).toISOString().split('T')[0];
 
     // IHSG
     try {
       const ihsgRes = await fetch(
-        `https://api.datasectors.com/api/chart-saham/IHSG/daily/latest?from=${sevenDaysAgo}&to=${today}`,
+        `https://api.datasectors.com/api/chart-saham/IHSG/daily/latest?from=${thirtyDaysAgo}&to=${today}`,
         { headers }
       );
       const ihsgData = await ihsgRes.json();
@@ -106,7 +106,7 @@ async function fetchKursTerkini() {
     for (const kode of sahamList) {
       try {
         const res = await fetch(
-          `https://api.datasectors.com/api/chart-saham/${kode}/daily/latest?from=${sevenDaysAgo}&to=${today}`,
+          `https://api.datasectors.com/api/chart-saham/${kode}/daily/latest?from=${thirtyDaysAgo}&to=${today}`,
           { headers }
         );
         const data = await res.json();
