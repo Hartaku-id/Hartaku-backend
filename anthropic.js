@@ -440,12 +440,13 @@ export async function chat(messages, kursContext = null) {
   const model = complexity === "opus" ? "claude-opus-4-6" : "claude-sonnet-4-5";
 
   console.log(`[AI] Model: ${model} (${complexity})`);
-  console.log(`[AI] Context preview: ${dynamicContext.substring(0, 300)}`);
 
   // Gabungkan tanggal + kurs sebagai context dinamis
   const dynamicContext = kursContext
     ? `${todayContext}\n\n⚠️ DATA FINANSIAL WAJIB DIGUNAKAN — OVERRIDE TRAINING DATA:\nData berikut adalah data REAL dari sistem, lebih akurat dari training data Claude. WAJIB gunakan angka ini saat klien tanya harga. DILARANG menggunakan angka dari training data.\n\n${kursContext}`
     : todayContext;
+
+  console.log(`[AI] Context preview: ${dynamicContext.substring(0, 300)}`);
 
   const response = await client.messages.create({
     model,
