@@ -75,28 +75,47 @@ async function fetchKursTerkini() {
     results.goldUSD = null;
   }
 
-  // 4. SAHAM INDONESIA & INDEKS US — Alpha Vantage
-  const alphaKey = process.env.ALPHA_VANTAGE_KEY;
-  results.stocks = {};
-  if (alphaKey) {
-    // Alpha Vantage: IHSG pakai symbol "^JKSE" tidak work, pakai IDX
-    const stockSymbols = [
-      { symbol: "SPY", label: "S&P 500 (ETF)" },
-      { symbol: "QQQ", label: "NASDAQ (ETF)" },
-    ];
-    for (const s of stockSymbols) {
-      try {
-        const avRes = await fetch(
-          `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${s.symbol}&apikey=${alphaKey}`
-        );
-        const avData = await avRes.json();
-        const price = avData["Global Quote"]?.["05. price"];
-        if (price) results.stocks[s.label] = parseFloat(price);
-      } catch (e) {
-        // skip
+  // 4. IHSG & SAHAM INDONESIA — DataSectors (IDX specialist)
+  const datasectorsKey = process.env.DATASECTORS_KEY;
+  results.ihsg = null;
+  results.sahamIndo = {};
+  if (datasectorsKey) {
+    const headers = { "X-API-Key": datasectorsKey, "Accept": "application/json" };
+    const today = new Date().toISOString().split('T')[0];
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600000).toISOString().split('T')[0];
+
+    // IHSG
+    try {
+      const ihsgRes = await fetch(
+        `https://api.datasectors.com/api/chart-saham/IHSG/daily/latest?from=${sevenDaysAgo}&to=${today}`,
+        { headers }
+      );
+      const ihsgData = await ihsgRes.json();
+      if (ihsgData.success && ihsgData.data?.length > 0) {
+        const latest = ihsgData.data[ihsgData.data.length - 1];
+        results.ihsg = { close: latest.close, date: latest.datetime, change: latest.change_percent };
+        console.log(`[DataSectors] IHSG: ${results.ihsg.close} (${results.ihsg.date})`);
       }
+    } catch (e) {
+      console.error("[DataSectors] Gagal fetch IHSG:", e.message);
     }
-    console.log(`[Alpha] ${Object.keys(results.stocks).length} saham berhasil`);
+
+    // Saham andalan Indonesia
+    const sahamList = ["BBCA", "BBRI", "TLKM", "ASII", "ANTM"];
+    for (const kode of sahamList) {
+      try {
+        const res = await fetch(
+          `https://api.datasectors.com/api/chart-saham/${kode}/daily/latest?from=${sevenDaysAgo}&to=${today}`,
+          { headers }
+        );
+        const data = await res.json();
+        if (data.success && data.data?.length > 0) {
+          const latest = data.data[data.data.length - 1];
+          results.sahamIndo[kode] = { close: latest.close, change: latest.change_percent };
+        }
+      } catch (e) { /* skip */ }
+    }
+    console.log(`[DataSectors] Saham Indo: ${Object.keys(results.sahamIndo).length} berhasil`);
   }
 
   // Format output
@@ -114,11 +133,20 @@ async function fetchKursTerkini() {
   const formatIDR = (n) => n ? Math.round(n).toLocaleString('id-ID') : 'tidak tersedia';
   const formatUSD = (n, dec=2) => n ? `USD ${Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec})}` : 'tidak tersedia';
   const formatNum = (n, dec=2) => n ? Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec}) : 'tidak tersedia';
+  const formatChange = (c) => c ? `(${c > 0 ? '+' : ''}${Number(c).toFixed(2)}%)` : '';
 
   const tanggal = results.kursDate || new Date().toISOString().split('T')[0];
 
+  const ihsgLine = results.ihsg
+    ? `- IHSG: ${formatNum(results.ihsg.close)} ${formatChange(results.ihsg.change)} per ${results.ihsg.date}`
+    : '- IHSG: tidak tersedia';
+
+  const sahamLines = Object.entries(results.sahamIndo || {}).map(([k, v]) =>
+    `- ${k}: Rp ${formatIDR(v.close)} ${formatChange(v.change)}`
+  ).join('\n') || '- Data tidak tersedia';
+
   const finansialText = `
-DATA FINANSIAL TERKINI (per ${tanggal}):
+DATA FINANSIAL REFERENSI (per ${tanggal}):
 
 KURS (terhadap IDR):
 - USD 1 = Rp ${formatIDR(idr)}
@@ -129,18 +157,21 @@ KURS (terhadap IDR):
 - JPY 100 = Rp ${formatIDR((idr / (r.JPY || 1)) * 100)}
 - MYR 1 = Rp ${formatIDR(idr / (r.MYR || 1))}
 
+PASAR MODAL INDONESIA:
+${ihsgLine}
+SAHAM ANDALAN IDX:
+${sahamLines}
+
 EMAS:
-- Emas dunia: ${formatUSD(goldUSD)}/troy oz
+- Emas dunia (spot): ${formatUSD(goldUSD)}/troy oz
 - Estimasi emas IDR: Rp ${emasIDRperGram ? formatIDR(emasIDRperGram) : 'tidak tersedia'}/gram
 
 KRIPTO:
 - Bitcoin (BTC): ${formatUSD(btcUSD)}
 - Ethereum (ETH): ${formatUSD(ethUSD)}
 
-PASAR MODAL & SAHAM:
-${Object.entries(results.stocks || {}).map(([k, v]) => `- ${k}: ${formatNum(v)}`).join('\n') || '- Data tidak tersedia (butuh Alpha Vantage key)'}
-
-Catatan: Data kurs diupdate harian (ECB). Emas & crypto near real-time. Saham adalah harga penutupan terakhir.`.trim();
+PENTING — CARA GUNAKAN DATA INI:
+Data di atas adalah referensi terdekat yang tersedia, bukan harga pasar real-time. Gunakan sebagai gambaran awal dalam diskusi dengan klien. Untuk semua keputusan finansial, selalu minta klien konfirmasi harga terkini langsung dari sumber: bank, aplikasi broker, toko emas, atau Google Finance. Harga aktual di pasar Indonesia bisa berbeda karena selisih waktu, kurs transaksi, biaya dan margin pedagang, serta kondisi pasar lokal.`.trim();
 
   finansialCache = { data: finansialText, timestamp: now };
   console.log("[Finansial] Data berhasil diupdate");
