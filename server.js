@@ -14,6 +14,7 @@ import { chat } from "./anthropic.js";
 // FETCH DATA FINANSIAL — kurs, IHSG, emas, komoditas
 // ============================================
 let finansialCache = { data: null, timestamp: 0 };
+let sahamCache = { ihsg: null, sahamIndo: {}, date: null }; // sekali per hari
 let dividenCache = { data: null }; // sekali per restart
 let beritaCache = { data: null, timestamp: 0 };
 
@@ -77,11 +78,19 @@ async function fetchKursTerkini() {
     results.goldUSD = null;
   }
 
-  // 4. IHSG & SAHAM INDONESIA — DataSectors (IDX specialist)
+  // DataSectors — saham dan IHSG hanya sekali per hari
   const datasectorsKey = process.env.DATASECTORS_KEY;
-  results.ihsg = null;
-  results.sahamIndo = {};
-  if (datasectorsKey) {
+  const todayDate = new Date().toISOString().split('T')[0];
+
+  if (sahamCache.date !== todayDate) {
+    // Reset cache harian
+    sahamCache = { ihsg: null, sahamIndo: {}, date: todayDate };
+  }
+
+  results.ihsg = sahamCache.ihsg;
+  results.sahamIndo = sahamCache.sahamIndo;
+
+  if (datasectorsKey && sahamCache.date === todayDate && !sahamCache.ihsg) {
     const headers = { "X-API-Key": datasectorsKey, "Accept": "application/json" };
     const today = new Date().toISOString().split('T')[0];
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600000).toISOString().split('T')[0];
@@ -105,9 +114,9 @@ async function fetchKursTerkini() {
 
     // Saham Blue Chip + Dividen Tinggi — fetch paralel
     const sahamList = [
-      // Blue chip 20
+      // Blue chip 19 (tanpa BYAN)
       "BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "UNVR", "ICBP", "INDF", "KLBF",
-      "GOTO", "BYAN", "ADRO", "PTBA", "ITMG", "PGAS", "JSMR", "SMGR", "EXCL", "AMRT",
+      "GOTO", "ADRO", "PTBA", "ITMG", "PGAS", "JSMR", "SMGR", "EXCL", "AMRT",
       // Dividen tinggi 10
       "ANTM", "INCO", "PTPP", "BSDE", "CPIN", "TBIG", "ISAT", "MEDC", "AKRA", "UNTR"
     ];
@@ -133,6 +142,8 @@ async function fetchKursTerkini() {
     sahamResults.forEach(s => {
       if (s) results.sahamIndo[s.kode] = { close: s.close, date: s.date };
     });
+    sahamCache.sahamIndo = results.sahamIndo;
+    sahamCache.ihsg = results.ihsg;
     console.log(`[DataSectors] Saham Indo: ${Object.keys(results.sahamIndo).length} berhasil`);
 
     // Dividend details — fetch sekali per restart (dividen jarang berubah)
@@ -184,8 +195,8 @@ async function fetchKursTerkini() {
     ? `- IHSG: ${formatNum(results.ihsg.close)} ${formatChange(results.ihsg.change)} per ${results.ihsg.date}`
     : '- IHSG: tidak tersedia';
 
-  const blueChip = ['BBCA','BBRI','BMRI','BBNI','TLKM','ASII','UNVR','ICBP','INDF','KLBF','GOTO','BYAN','ADRO','PTBA','ITMG','PGAS','JSMR','SMGR','EXCL','AMRT'];
-  const dividenList = ['ANTM','INCO','PTPP','BSDE','CPIN','TBIG','ISAT','MEDC','AKRA','UNTR'];
+  const blueChip = ['BBCA','BBRI','BMRI','BBNI','TLKM','ASII','UNVR','ICBP','INDF','KLBF','GOTO','ADRO','PTBA','ITMG','PGAS','JSMR','SMGR','EXCL','AMRT'];
+  const dividenListOutput = ['ANTM','INCO','PTPP','BSDE','CPIN','TBIG','ISAT','MEDC','AKRA','UNTR'];
   const formatSaham = (list) => list
     .filter(k => results.sahamIndo[k])
     .map(k => `- ${k}: Rp ${formatIDR(results.sahamIndo[k].close)}`)
@@ -224,7 +235,7 @@ ${ihsgLine}
 ${formatSaham(blueChip)}
 
 *SAHAM DIVIDEN TINGGI:*
-${formatDividen(dividenList)}
+${formatDividen(dividenListOutput)}
 
 *EMAS:*
 - Emas dunia (spot): ${formatUSD(goldUSD)}/troy oz
@@ -761,6 +772,40 @@ app.get("/test-dividen", async (req, res) => {
   }
 });
 
+// ============================================
+// SCHEDULED REFRESH — Jadwal Bursa IDX
+// ============================================
+function getWIBHourMinute() {
+  const wib = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+  return { hour: wib.getHours(), minute: wib.getMinutes(), day: wib.getDay() };
+}
+
+function scheduleMarketRefresh() {
+  setInterval(async () => {
+    const { hour, minute, day } = getWIBHourMinute();
+    const isWeekday = day >= 1 && day <= 5;
+    if (!isWeekday) return;
+
+    // Jadwal refresh: 09:01, 12:00, 16:01 WIB
+    const isRefreshTime = (
+      (hour === 9 && minute === 1) ||
+      (hour === 12 && minute === 0) ||
+      (hour === 16 && minute === 1)
+    );
+
+    if (isRefreshTime) {
+      console.log(`[Scheduler] Refresh data pasar pukul ${hour}:${String(minute).padStart(2,'0')} WIB`);
+      // Reset cache saham agar di-fetch ulang
+      const todayDate = new Date().toISOString().split('T')[0];
+      sahamCache = { ihsg: null, sahamIndo: {}, date: todayDate };
+      finansialCache = { data: null, timestamp: 0 };
+      // Trigger fetch
+      await fetchKursTerkini();
+      console.log(`[Scheduler] Data pasar berhasil diupdate`);
+    }
+  }, 60000); // cek setiap 1 menit
+}
+
 app.listen(PORT, () => {
   console.log(`
 ╔══════════════════════════════════════╗
@@ -774,6 +819,8 @@ app.listen(PORT, () => {
 ║  Images   : ✅ Sharp compression      ║
 ╚══════════════════════════════════════╝
   `);
+  scheduleMarketRefresh();
+  console.log("[Scheduler] Market refresh aktif: 09:01, 12:00, 16:01 WIB (Senin-Jumat)");
 });
 
 export default app;
