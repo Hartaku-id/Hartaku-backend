@@ -144,10 +144,11 @@ async function fetchKursTerkini() {
             { headers }
           );
           const data = await res.json();
+          console.log(`[Dividen] ${kode}: ${JSON.stringify(data).substring(0, 150)}`);
           if (data.success && data.data) {
             return { kode, data: data.data };
           }
-        } catch (e) { /* skip */ }
+        } catch (e) { console.error(`[Dividen] ${kode} error:`, e.message); }
         return null;
       })
     );
