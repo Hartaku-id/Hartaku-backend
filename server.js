@@ -14,11 +14,12 @@ import { chat } from "./anthropic.js";
 // FETCH DATA FINANSIAL — kurs, IHSG, emas, komoditas
 // ============================================
 let finansialCache = { data: null, timestamp: 0 };
+let dividenCache = { data: null }; // sekali per restart
 let beritaCache = { data: null, timestamp: 0 };
 
 async function fetchKursTerkini() {
   const now = Date.now();
-  // Cache 1 jam
+  // Cache 1 jam untuk semua data termasuk saham
   if (finansialCache.data && (now - finansialCache.timestamp) < 3600000) {
     return finansialCache.data;
   }
@@ -134,33 +135,30 @@ async function fetchKursTerkini() {
     });
     console.log(`[DataSectors] Saham Indo: ${Object.keys(results.sahamIndo).length} berhasil`);
 
-    // Dividend details — fetch paralel untuk 10 saham dividen tinggi
+    // Dividend details — fetch sekali per restart (dividen jarang berubah)
     const dividenList = ["ANTM", "INCO", "PTPP", "BSDE", "CPIN", "TBIG", "ISAT", "MEDC", "AKRA", "UNTR"];
-    const dividenResults = await Promise.all(
-      dividenList.map(async (kode) => {
-        try {
-          const res = await fetch(
-            `https://api.datasectors.com/api/stocks/dividends/details/${kode}`,
-            { headers }
-          );
-          const data = await res.json();
-          console.log(`[Dividen] ${kode}: ${JSON.stringify(data).substring(0, 150)}`);
-          if (data.success && data.data) {
-            return { kode, data: data.data };
-          }
-        } catch (e) { console.error(`[Dividen] ${kode} error:`, e.message); }
-        return null;
-      })
-    );
-
-    results.dividen = {};
-    dividenResults.forEach(d => {
-      if (d) results.dividen[d.kode] = d.data;
-    });
-    console.log(`[DataSectors] Dividen: ${Object.keys(results.dividen).length} berhasil`);
-    // Log struktur data dividen pertama untuk verifikasi field names
-    const firstDividen = dividenResults.find(d => d);
-    if (firstDividen) console.log(`[DataSectors] Dividen sample:`, JSON.stringify(firstDividen.data).substring(0, 300));
+    if (!dividenCache.data) {
+      const dividenResults = await Promise.all(
+        dividenList.map(async (kode) => {
+          try {
+            const res = await fetch(
+              `https://api.datasectors.com/api/stocks/dividends/details/${kode}`,
+              { headers }
+            );
+            const data = await res.json();
+            if (data.success && data.data) {
+              return { kode, data: data.data };
+            }
+          } catch (e) { /* skip */ }
+          return null;
+        })
+      );
+      const divObj = {};
+      dividenResults.forEach(d => { if (d) divObj[d.kode] = d.data; });
+      dividenCache.data = divObj;
+      console.log(`[DataSectors] Dividen: ${Object.keys(divObj).length} berhasil (cached)`);
+    }
+    results.dividen = dividenCache.data;
   }
 
   // Format output
@@ -204,8 +202,11 @@ async function fetchKursTerkini() {
     })
     .join('\n') || '- Data tidak tersedia';
 
+  const fetchTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+  const fetchDate = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
+
   const finansialText = `
-DATA FINANSIAL REFERENSI (per ${tanggal}):
+DATA FINANSIAL REFERENSI (diambil ${fetchDate} pukul ${fetchTime} WIB):
 
 *KURS (terhadap IDR):*
 - USD 1 = Rp ${formatIDR(idr)}
