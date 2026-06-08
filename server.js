@@ -157,6 +157,9 @@ async function fetchKursTerkini() {
       if (d) results.dividen[d.kode] = d.data;
     });
     console.log(`[DataSectors] Dividen: ${Object.keys(results.dividen).length} berhasil`);
+    // Log struktur data dividen pertama untuk verifikasi field names
+    const firstDividen = dividenResults.find(d => d);
+    if (firstDividen) console.log(`[DataSectors] Dividen sample:`, JSON.stringify(firstDividen.data).substring(0, 300));
   }
 
   // Format output
