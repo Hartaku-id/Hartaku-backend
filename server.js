@@ -102,22 +102,36 @@ async function fetchKursTerkini() {
       console.error("[DataSectors] Gagal fetch IHSG:", e.message);
     }
 
-    // Saham andalan Indonesia
-    const sahamList = ["BBCA", "BBRI", "TLKM", "ASII", "ANTM"];
-    for (const kode of sahamList) {
-      try {
-        const res = await fetch(
-          `https://api.datasectors.com/api/chart-saham/${kode}/daily/latest?from=${thirtyDaysAgo}&to=${today}`,
-          { headers }
-        );
-        const data = await res.json();
-        const cb = data?.data?.data?.data?.chartbit;
-        if (cb && cb.length > 0) {
-          const latest = cb[0];
-          results.sahamIndo[kode] = { close: latest.close, date: latest.date };
-        }
-      } catch (e) { /* skip */ }
-    }
+    // Saham Blue Chip + Dividen Tinggi — fetch paralel
+    const sahamList = [
+      // Blue chip 20
+      "BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "UNVR", "ICBP", "INDF", "KLBF",
+      "GOTO", "BYAN", "ADRO", "PTBA", "ITMG", "PGAS", "JSMR", "SMGR", "EXCL", "AMRT",
+      // Dividen tinggi 10
+      "ANTM", "INCO", "PTPP", "BSDE", "CPIN", "TBIG", "ISAT", "MEDC", "AKRA", "UNTR"
+    ];
+
+    const sahamResults = await Promise.all(
+      sahamList.map(async (kode) => {
+        try {
+          const res = await fetch(
+            `https://api.datasectors.com/api/chart-saham/${kode}/daily/latest?from=${thirtyDaysAgo}&to=${today}`,
+            { headers }
+          );
+          const data = await res.json();
+          const cb = data?.data?.data?.data?.chartbit;
+          if (cb && cb.length > 0) {
+            const latest = cb[0];
+            return { kode, close: latest.close, date: latest.date };
+          }
+        } catch (e) { /* skip */ }
+        return null;
+      })
+    );
+
+    sahamResults.forEach(s => {
+      if (s) results.sahamIndo[s.kode] = { close: s.close, date: s.date };
+    });
     console.log(`[DataSectors] Saham Indo: ${Object.keys(results.sahamIndo).length} berhasil`);
   }
 
@@ -144,14 +158,17 @@ async function fetchKursTerkini() {
     ? `- IHSG: ${formatNum(results.ihsg.close)} ${formatChange(results.ihsg.change)} per ${results.ihsg.date}`
     : '- IHSG: tidak tersedia';
 
-  const sahamLines = Object.entries(results.sahamIndo || {}).map(([k, v]) =>
-    `- ${k}: Rp ${formatIDR(v.close)} ${formatChange(v.change)}`
-  ).join('\n') || '- Data tidak tersedia';
+  const blueChip = ['BBCA','BBRI','BMRI','BBNI','TLKM','ASII','UNVR','ICBP','INDF','KLBF','GOTO','BYAN','ADRO','PTBA','ITMG','PGAS','JSMR','SMGR','EXCL','AMRT'];
+  const dividen = ['ANTM','INCO','PTPP','BSDE','CPIN','TBIG','ISAT','MEDC','AKRA','UNTR'];
+  const formatSaham = (list) => list
+    .filter(k => results.sahamIndo[k])
+    .map(k => `- ${k}: Rp ${formatIDR(results.sahamIndo[k].close)}`)
+    .join('\n') || '- Data tidak tersedia';
 
   const finansialText = `
 DATA FINANSIAL REFERENSI (per ${tanggal}):
 
-KURS (terhadap IDR):
+*KURS (terhadap IDR):*
 - USD 1 = Rp ${formatIDR(idr)}
 - SGD 1 = Rp ${formatIDR(idr / (r.SGD || 1))}
 - EUR 1 = Rp ${formatIDR(idr / (r.EUR || 1))}
@@ -160,21 +177,24 @@ KURS (terhadap IDR):
 - JPY 100 = Rp ${formatIDR((idr / (r.JPY || 1)) * 100)}
 - MYR 1 = Rp ${formatIDR(idr / (r.MYR || 1))}
 
-PASAR MODAL INDONESIA:
+*PASAR MODAL INDONESIA:*
 ${ihsgLine}
-SAHAM ANDALAN IDX:
-${sahamLines}
 
-EMAS:
+*SAHAM BLUE CHIP:*
+${formatSaham(blueChip)}
+
+*SAHAM DIVIDEN TINGGI:*
+${formatSaham(dividen)}
+
+*EMAS:*
 - Emas dunia (spot): ${formatUSD(goldUSD)}/troy oz
 - Estimasi emas IDR: Rp ${emasIDRperGram ? formatIDR(emasIDRperGram) : 'tidak tersedia'}/gram
 
-KRIPTO:
+*KRIPTO:*
 - Bitcoin (BTC): ${formatUSD(btcUSD)}
 - Ethereum (ETH): ${formatUSD(ethUSD)}
 
-PENTING — CARA GUNAKAN DATA INI:
-Data kurs dan crypto diupdate setiap jam. Data saham Indonesia (IHSG, BBCA, dll) adalah harga penutupan hari bursa terakhir — bursa IDX buka Senin-Jumat pukul 09.00-16.00 WIB. Di luar jam bursa atau akhir pekan, data yang tersedia adalah harga penutupan hari bursa terakhir dan bisa berubah saat pasar dibuka kembali. Untuk keputusan finansial, selalu konfirmasi harga terkini di aplikasi broker, RTI Business, atau Google Finance.`.trim();
+PENTING: Data saham adalah harga penutupan hari bursa terakhir. Bursa IDX buka Senin-Jumat 09.00-16.00 WIB. Konfirmasi harga terkini di aplikasi broker atau RTI Business.`.trim();
 
   finansialCache = { data: finansialText, timestamp: now };
   console.log("[Finansial] Data berhasil diupdate");
