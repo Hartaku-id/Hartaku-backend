@@ -383,7 +383,9 @@ function detectMessageComplexity(messages) {
     // Finansial kompleks
     "hutang", "pailit", "bangkrut", "utang", "kredit macet", "asuransi jiwa",
     "investasi", "bisnis keluarga", "perusahaan", "saham",
-    // Geopolitik & makroekonomi — WAJIB OPUS
+    // Finansial data — Opus lebih natural saat bahas angka
+    "ihsg", "harga saham", "harga emas", "harga crypto", "bitcoin", "ethereum",
+    "kurs", "dolar", "valas", "investasi", "portofolio", "aset",
     "pemerintah", "korupsi", "politik", "presiden", "menteri", "kebijakan",
     "mbg", "makan bergizi", "kopdes", "koperasi desa", "merah putih",
     "asing cabut", "investor cabut", "kepercayaan investor", "rating",
@@ -446,7 +448,6 @@ export async function chat(messages, kursContext = null) {
     ? `${todayContext}\n\n⚠️ DATA FINANSIAL WAJIB DIGUNAKAN — OVERRIDE TRAINING DATA:\nData berikut adalah data REAL dari sistem, lebih akurat dari training data Claude. WAJIB gunakan angka ini saat klien tanya harga. DILARANG menggunakan angka dari training data.\n\n${kursContext}`
     : todayContext;
 
-  console.log(`[AI] Context preview: ${dynamicContext.substring(0, 300)}`);
 
   const response = await client.messages.create({
     model,
@@ -481,19 +482,26 @@ export async function summarize(conversationText) {
     model: "claude-sonnet-4-5",
     max_tokens: 500,
     system: `Kamu adalah asisten yang meringkas percakapan konsultasi Hartaku.
-Buat ringkasan padat dan terstruktur yang mencakup SEMUA informasi penting berikut (jika ada):
+Buat ringkasan padat dan terstruktur. PRIORITAS UTAMA adalah menyimpan identitas klien agar Hartaku bisa menyapa dengan tepat di percakapan berikutnya.
 
-1. IDENTITAS: nama, usia, gender, agama, domisili
-2. KELUARGA: status pernikahan, jumlah anak, situasi keluarga
-3. PROFESI: pekerjaan atau bisnis
-4. ASET: jenis aset, status legal, ada sengketa atau tidak
+WAJIB ada di awal ringkasan (tulis "TIDAK DIKETAHUI" jika memang belum disebutkan):
+- NAMA: [nama klien]
+- GENDER: [pria/wanita]
+- USIA: [usia atau perkiraan]
+- SAPAAN: [Pak/Bu/Anda/kamu — sesuai aturan usia dan gender]
+
+Lalu lanjutkan dengan:
+1. KELUARGA: status pernikahan, jumlah anak, situasi keluarga
+2. PROFESI: pekerjaan atau bisnis
+3. ASET: jenis aset, nilai, status legal, ada sengketa atau tidak
+4. RENCANA & KESEPAKATAN: angka atau keputusan yang sudah disepakati (anchor number)
 5. MASALAH UTAMA: kekhawatiran atau tujuan utama klien
 6. KONDISI EMOSI: bagaimana kondisi psikologis klien
 7. PROGRESS: insight apa yang sudah diberikan, sudah sampai mana percakapan
 8. HAL SENSITIF: apapun yang perlu diingat agar tidak menyinggung
 
-Tulis dalam format paragraf singkat. Maksimal 300 kata.
-JANGAN hilangkan detail apapun yang bisa mempengaruhi cara Hartaku melayani klien ini.`,
+Tulis dalam format paragraf singkat. Maksimal 350 kata.
+JANGAN hilangkan nama, gender, dan usia klien — ini yang paling penting untuk sapaan di percakapan berikutnya.`,
     messages: [
       {
         role: "user",
