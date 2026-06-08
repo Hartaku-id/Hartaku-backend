@@ -14,6 +14,7 @@ import { chat } from "./anthropic.js";
 // FETCH DATA FINANSIAL — kurs, IHSG, emas, komoditas
 // ============================================
 let finansialCache = { data: null, timestamp: 0 };
+let beritaCache = { data: null, timestamp: 0 };
 
 async function fetchKursTerkini() {
   const now = Date.now();
@@ -173,7 +174,7 @@ KRIPTO:
 - Ethereum (ETH): ${formatUSD(ethUSD)}
 
 PENTING — CARA GUNAKAN DATA INI:
-Data di atas adalah referensi terdekat yang tersedia, bukan harga pasar real-time. Gunakan sebagai gambaran awal dalam diskusi dengan klien. Untuk semua keputusan finansial, selalu minta klien konfirmasi harga terkini langsung dari sumber: bank, aplikasi broker, toko emas, atau Google Finance. Harga aktual di pasar Indonesia bisa berbeda karena selisih waktu, kurs transaksi, biaya dan margin pedagang, serta kondisi pasar lokal.`.trim();
+Data kurs dan crypto diupdate setiap jam. Data saham Indonesia (IHSG, BBCA, dll) adalah harga penutupan hari bursa terakhir — bursa IDX buka Senin-Jumat pukul 09.00-16.00 WIB. Di luar jam bursa atau akhir pekan, data yang tersedia adalah harga penutupan hari bursa terakhir dan bisa berubah saat pasar dibuka kembali. Untuk keputusan finansial, selalu konfirmasi harga terkini di aplikasi broker, RTI Business, atau Google Finance.`.trim();
 
   finansialCache = { data: finansialText, timestamp: now };
   console.log("[Finansial] Data berhasil diupdate");
@@ -183,8 +184,6 @@ Data di atas adalah referensi terdekat yang tersedia, bukan harga pasar real-tim
 // ============================================
 // FETCH BERITA TERKINI — RSS Feed Indonesia
 // ============================================
-let beritaCache = { data: null, timestamp: 0 };
-
 async function fetchBeritaTerkini() {
   const now = Date.now();
   // Cache 2 jam
