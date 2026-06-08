@@ -133,6 +133,30 @@ async function fetchKursTerkini() {
       if (s) results.sahamIndo[s.kode] = { close: s.close, date: s.date };
     });
     console.log(`[DataSectors] Saham Indo: ${Object.keys(results.sahamIndo).length} berhasil`);
+
+    // Dividend details — fetch paralel untuk 10 saham dividen tinggi
+    const dividenList = ["ANTM", "INCO", "PTPP", "BSDE", "CPIN", "TBIG", "ISAT", "MEDC", "AKRA", "UNTR"];
+    const dividenResults = await Promise.all(
+      dividenList.map(async (kode) => {
+        try {
+          const res = await fetch(
+            `https://api.datasectors.com/api/stocks/dividends/details/${kode}`,
+            { headers }
+          );
+          const data = await res.json();
+          if (data.success && data.data) {
+            return { kode, data: data.data };
+          }
+        } catch (e) { /* skip */ }
+        return null;
+      })
+    );
+
+    results.dividen = {};
+    dividenResults.forEach(d => {
+      if (d) results.dividen[d.kode] = d.data;
+    });
+    console.log(`[DataSectors] Dividen: ${Object.keys(results.dividen).length} berhasil`);
   }
 
   // Format output
@@ -159,10 +183,21 @@ async function fetchKursTerkini() {
     : '- IHSG: tidak tersedia';
 
   const blueChip = ['BBCA','BBRI','BMRI','BBNI','TLKM','ASII','UNVR','ICBP','INDF','KLBF','GOTO','BYAN','ADRO','PTBA','ITMG','PGAS','JSMR','SMGR','EXCL','AMRT'];
-  const dividen = ['ANTM','INCO','PTPP','BSDE','CPIN','TBIG','ISAT','MEDC','AKRA','UNTR'];
+  const dividenList = ['ANTM','INCO','PTPP','BSDE','CPIN','TBIG','ISAT','MEDC','AKRA','UNTR'];
   const formatSaham = (list) => list
     .filter(k => results.sahamIndo[k])
     .map(k => `- ${k}: Rp ${formatIDR(results.sahamIndo[k].close)}`)
+    .join('\n') || '- Data tidak tersedia';
+
+  const formatDividen = (list) => list
+    .filter(k => results.sahamIndo[k] || results.dividen?.[k])
+    .map(k => {
+      const harga = results.sahamIndo[k] ? `Rp ${formatIDR(results.sahamIndo[k].close)}` : '';
+      const d = results.dividen?.[k];
+      const yield_ = d?.dividend_yield ? ` | yield ${Number(d.dividend_yield).toFixed(2)}%` : '';
+      const last = d?.last_dividend ? ` | dividen Rp ${formatIDR(d.last_dividend)}/saham` : '';
+      return `- ${k}: ${harga}${yield_}${last}`;
+    })
     .join('\n') || '- Data tidak tersedia';
 
   const finansialText = `
@@ -184,7 +219,7 @@ ${ihsgLine}
 ${formatSaham(blueChip)}
 
 *SAHAM DIVIDEN TINGGI:*
-${formatSaham(dividen)}
+${formatDividen(dividenList)}
 
 *EMAS:*
 - Emas dunia (spot): ${formatUSD(goldUSD)}/troy oz
@@ -706,6 +741,19 @@ app.post("/reset", requireSecret, async (req, res) => {
 app.use((err, req, res, _next) => {
   console.error("[Server] Error:", err);
   res.status(500).json({ error: "Internal server error" });
+});
+
+// TEMP: Test DataSectors dividend schema
+app.get("/test-dividen", async (req, res) => {
+  try {
+    const r = await fetch("https://api.datasectors.com/api/stocks/dividends/details/BBCA", {
+      headers: { "X-API-Key": process.env.DATASECTORS_KEY }
+    });
+    const data = await r.json();
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.listen(PORT, () => {
