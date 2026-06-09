@@ -114,11 +114,8 @@ async function fetchKursTerkini() {
 
     // Saham Blue Chip + Dividen Tinggi — fetch paralel
     const sahamList = [
-      // Blue chip 19 (tanpa BYAN)
-      "BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "UNVR", "ICBP", "INDF", "KLBF",
-      "GOTO", "ADRO", "PTBA", "ITMG", "PGAS", "JSMR", "SMGR", "EXCL", "AMRT",
-      // Dividen tinggi 10
-      "ANTM", "INCO", "PTPP", "BSDE", "CPIN", "TBIG", "ISAT", "MEDC", "AKRA", "UNTR"
+      // Sementara 3 saham untuk hemat quota selama debug dividen
+      "BBCA", "BBRI", "BMRI"
     ];
 
     const sahamResults = await Promise.all(
@@ -147,7 +144,7 @@ async function fetchKursTerkini() {
     console.log(`[DataSectors] Saham Indo: ${Object.keys(results.sahamIndo).length} berhasil`);
 
     // Dividend details — fetch sekali per restart (dividen jarang berubah)
-    const dividenList = ["ANTM", "INCO", "PTPP", "BSDE", "CPIN", "TBIG", "ISAT", "MEDC", "AKRA", "UNTR"];
+    const dividenList = ["UNTR", "ANTM", "INCO"];
     if (!dividenCache.data) {
       const dividenResults = await Promise.all(
         dividenList.map(async (kode) => {
@@ -217,6 +214,30 @@ async function fetchKursTerkini() {
   const fetchTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
   const fetchDate = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
 
+  // Ambil history 7 hari untuk saham yang di-monitor
+  const historySymbols = ['IHSG', 'BBCA', 'BBRI', 'BMRI', 'XAU', 'BTC', 'ETH', 'USD/IDR'];
+  const priceHistory = await getPriceHistory(historySymbols, 7);
+
+  // Format history per symbol
+  const historyBySymbol = {};
+  priceHistory.forEach(h => {
+    if (!historyBySymbol[h.symbol]) historyBySymbol[h.symbol] = [];
+    historyBySymbol[h.symbol].push({ date: h.date, price: h.price });
+  });
+
+  const formatHistory = (symbol) => {
+    const data = historyBySymbol[symbol];
+    if (!data || data.length < 2) return '';
+    return data.slice(0, 5).map(d => `${d.date}: ${formatIDR ? formatIDR(d.price) : d.price}`).join(' | ');
+  };
+
+  const historyText = Object.entries(historyBySymbol).length > 0 ? `
+
+*HISTORY 7 HARI TERAKHIR:*
+${['IHSG','BBCA','BBRI','BMRI','XAU','BTC'].filter(s => historyBySymbol[s]?.length > 1).map(s =>
+  `- ${s}: ${historyBySymbol[s].slice(0,5).map(d => `${d.date.slice(5)}: ${Number(d.price).toLocaleString('id-ID')}`).join(' → ')}`
+).join('\n')}` : '';
+
   const finansialText = `
 DATA FINANSIAL REFERENSI (diambil ${fetchDate} pukul ${fetchTime} WIB):
 
@@ -246,10 +267,23 @@ ${formatDividen(dividenListOutput)}
 - Bitcoin (BTC): ${formatUSD(btcUSD)}
 - Ethereum (ETH): ${formatUSD(ethUSD)}
 
-PENTING: Data saham adalah harga penutupan hari bursa terakhir. Bursa IDX buka Senin-Jumat 09.00-16.00 WIB. Konfirmasi harga terkini di aplikasi broker atau RTI Business.`.trim();
+PENTING: Data saham adalah harga penutupan hari bursa terakhir. Bursa IDX buka Senin-Jumat 09.00-16.00 WIB. Konfirmasi harga terkini di aplikasi broker atau RTI Business.${historyText}`.trim();
 
   finansialCache = { data: finansialText, timestamp: now };
   console.log("[Finansial] Data berhasil diupdate");
+
+  // Simpan history harga ke Supabase
+  const historyData = [];
+  if (idr) historyData.push({ symbol: 'USD/IDR', price: idr, currency: 'IDR', asset_type: 'kurs' });
+  if (goldUSD) historyData.push({ symbol: 'XAU', price: goldUSD, currency: 'USD', asset_type: 'emas' });
+  if (btcUSD) historyData.push({ symbol: 'BTC', price: btcUSD, currency: 'USD', asset_type: 'crypto' });
+  if (ethUSD) historyData.push({ symbol: 'ETH', price: ethUSD, currency: 'USD', asset_type: 'crypto' });
+  if (results.ihsg?.close) historyData.push({ symbol: 'IHSG', price: results.ihsg.close, currency: 'IDR', asset_type: 'indeks' });
+  Object.entries(results.sahamIndo || {}).forEach(([k, v]) => {
+    if (v.close) historyData.push({ symbol: k, price: v.close, currency: 'IDR', asset_type: 'saham' });
+  });
+  if (historyData.length > 0) savePriceHistory(historyData).catch(() => {});
+
   return finansialText;
 }
 
@@ -323,6 +357,8 @@ import {
   getMessages,
   saveMessage,
   clearSession,
+  savePriceHistory,
+  getPriceHistory,
 } from "./supabase.js";
 
 const app = express();
