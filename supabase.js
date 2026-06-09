@@ -230,4 +230,49 @@ export async function clearSession(sessionId) {
   }
 }
 
+// ============================================
+// PRICE HISTORY — Simpan & ambil history harga
+// ============================================
+
+export async function savePriceHistory(priceData) {
+  // priceData: array of { symbol, price, currency, asset_type }
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const rows = priceData.map(d => ({
+      date: today,
+      asset_type: d.asset_type,
+      symbol: d.symbol,
+      price: d.price,
+      currency: d.currency || 'USD'
+    }));
+
+    const { error } = await supabase
+      .from('price_history')
+      .upsert(rows, { onConflict: 'date,symbol' });
+
+    if (error) throw error;
+    console.log(`[Supabase] Price history tersimpan: ${rows.length} data`);
+  } catch (err) {
+    console.error('[Supabase] savePriceHistory error:', err);
+  }
+}
+
+export async function getPriceHistory(symbols, days = 7) {
+  try {
+    const fromDate = new Date(Date.now() - days * 24 * 3600000).toISOString().split('T')[0];
+    const { data, error } = await supabase
+      .from('price_history')
+      .select('date, symbol, price, currency, asset_type')
+      .in('symbol', symbols)
+      .gte('date', fromDate)
+      .order('date', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('[Supabase] getPriceHistory error:', err);
+    return [];
+  }
+}
+
 export default supabase;
