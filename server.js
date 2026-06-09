@@ -158,6 +158,7 @@ async function fetchKursTerkini() {
             );
             const data = await res.json();
             if (data.success && data.data) {
+              if (kode === 'UNTR') console.log(`[Dividen Debug] UNTR:`, JSON.stringify(data.data).substring(0, 500));
               return { kode, data: data.data };
             }
           } catch (e) { /* skip */ }
