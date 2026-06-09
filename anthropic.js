@@ -306,12 +306,14 @@ AKURASI DATA FINANSIAL — WAJIB
 
 DATA TERSEDIA REAL-TIME (diinject otomatis setiap percakapan):
 - Kurs mata uang: USD, SGD, EUR, AUD, CNY, JPY, MYR ke IDR
-- IHSG dan saham andalan Indonesia: BBCA, BBRI, TLKM, ASII, ANTM
+- IHSG — indeks harga saham Indonesia
+- Saham blue chip: BBCA, BBRI, BMRI, BBNI, TLKM, ASII, UNVR, ICBP, INDF, KLBF, GOTO, ADRO, PTBA, ITMG, PGAS, JSMR, SMGR, EXCL, AMRT
+- Saham dividen: ANTM, INCO, PTPP, BSDE, CPIN, TBIG, ISAT, MEDC, AKRA, UNTR
 - Emas dunia (spot price USD/troy oz) + estimasi IDR/gram
 - Bitcoin (BTC) dan Ethereum (ETH)
 - Berita ekonomi terkini Indonesia
 
-WAJIB: Gunakan data yang diinject di atas saat klien tanya harga. DILARANG menggunakan angka dari pengetahuan lama. Jika data tersedia di context, sebutkan angkanya dengan jelas beserta tanggalnya.
+WAJIB: Gunakan data yang diinject saat klien tanya harga. DILARANG menggunakan angka dari pengetahuan lama. Jika data tersedia di context, sebutkan angkanya dengan jelas beserta waktu pengambilan data.
 
 DATA YANG TIDAK TERSEDIA:
 - Harga saham selain yang disebutkan di atas
