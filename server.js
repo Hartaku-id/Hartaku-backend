@@ -54,7 +54,6 @@ const DIVIDEN_STATIS = {
 };
 
 let sahamCache = { ihsg: null, sahamIndo: {}, date: null }; // sekali per hari
-let dividenCache = { data: null, version: null }; // sekali per restart
 let beritaCache = { data: null, timestamp: 0 };
 
 async function fetchKursTerkini() {
@@ -181,42 +180,6 @@ async function fetchKursTerkini() {
     sahamCache.sahamIndo = results.sahamIndo;
     sahamCache.ihsg = results.ihsg;
     console.log(`[DataSectors] Saham Indo: ${Object.keys(results.sahamIndo).length} berhasil`);
-
-    // Dividend details — fetch sekali per restart (dividen jarang berubah)
-    const dividenList = ["BBCA.JK", "BBRI.JK", "BMRI.JK"];
-    const dividenVersion = dividenList.join(',');
-    if (!dividenCache.data || dividenCache.version !== dividenVersion) {
-      console.log(`[DataSectors] Fetch dividen ticker: ${dividenVersion}`);
-      const today = new Date().toISOString().split('T')[0];
-      const oneYearAgo = new Date(Date.now() - 365 * 24 * 3600000).toISOString().split('T')[0];
-
-      const dividenResults = await Promise.all(
-        dividenList.map(async (kode) => {
-          try {
-            // Pakai events endpoint dengan filter ticker
-            const res = await fetch(
-              `https://api.datasectors.com/api/stocks/dividends/events?start_date=${oneYearAgo}&end_date=${today}&ticker=${kode.replace('.JK','')}`,
-              { headers }
-            );
-            const data = await res.json();
-            console.log(`[Dividen] ${kode}:`, JSON.stringify(data).substring(0, 300));
-            if (data.success && data.data) {
-              return { kode, data: data.data };
-            }
-          } catch (e) { /* skip */ }
-          return null;
-        })
-      );
-      const divObj = {};
-      dividenResults.forEach(d => { if (d) divObj[d.kode] = d.data; });
-      dividenCache.data = divObj;
-      dividenCache.version = dividenVersion;
-      // Debug — lihat struktur data dividen
-      const sample = Object.entries(divObj)[0];
-      if (sample) console.log(`[Dividen Sample] ${sample[0]}:`, JSON.stringify(sample[1]).substring(0, 400));
-      console.log(`[DataSectors] Dividen: ${Object.keys(divObj).length} berhasil`);
-    }
-    results.dividen = dividenCache.data;
   }
 
   // Format output
@@ -243,21 +206,9 @@ async function fetchKursTerkini() {
     : '- IHSG: tidak tersedia';
 
   const blueChip = ['BBCA','BBRI','BMRI'];
-  const dividenListOutput = ['BBCA','BBRI','BMRI'];
   const formatSaham = (list) => list
     .filter(k => results.sahamIndo[k])
     .map(k => `- ${k}: Rp ${formatIDR(results.sahamIndo[k].close)}`)
-    .join('\n') || '- Data tidak tersedia';
-
-  const formatDividen = (list) => list
-    .filter(k => results.sahamIndo[k] || results.dividen?.[k])
-    .map(k => {
-      const harga = results.sahamIndo[k] ? `Rp ${formatIDR(results.sahamIndo[k].close)}` : '';
-      const d = results.dividen?.[k];
-      const yield_ = d?.dividend_yield ? ` | yield ${Number(d.dividend_yield).toFixed(2)}%` : '';
-      const last = d?.last_dividend ? ` | dividen Rp ${formatIDR(d.last_dividend)}/saham` : '';
-      return `- ${k}: ${harga}${yield_}${last}`;
-    })
     .join('\n') || '- Data tidak tersedia';
 
   const fetchTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
@@ -315,9 +266,6 @@ ${ihsgLine}
 
 *SAHAM BLUE CHIP:*
 ${formatSaham(blueChip)}
-
-*SAHAM DIVIDEN TINGGI:*
-${formatDividen(dividenListOutput)}
 
 *EMAS:*
 - Emas dunia (spot): ${formatUSD(goldUSD)}/troy oz
