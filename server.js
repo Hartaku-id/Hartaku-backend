@@ -144,7 +144,7 @@ async function fetchKursTerkini() {
     console.log(`[DataSectors] Saham Indo: ${Object.keys(results.sahamIndo).length} berhasil`);
 
     // Dividend details — fetch sekali per restart (dividen jarang berubah)
-    const dividenList = ["UNTR", "ANTM", "INCO"];
+    const dividenList = ["UNTR.JK", "ANTM.JK", "INCO.JK"];
     if (!dividenCache.data) {
       const dividenResults = await Promise.all(
         dividenList.map(async (kode) => {
