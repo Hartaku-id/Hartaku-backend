@@ -167,6 +167,9 @@ async function fetchKursTerkini() {
       dividenResults.forEach(d => { if (d) divObj[d.kode] = d.data; });
       dividenCache.data = divObj;
       dividenCache.version = dividenVersion;
+      // Debug — lihat struktur data dividen
+      const sample = Object.entries(divObj)[0];
+      if (sample) console.log(`[Dividen Sample] ${sample[0]}:`, JSON.stringify(sample[1]).substring(0, 400));
       console.log(`[DataSectors] Dividen: ${Object.keys(divObj).length} berhasil`);
     }
     results.dividen = dividenCache.data;
