@@ -307,8 +307,7 @@ AKURASI DATA FINANSIAL — WAJIB
 DATA TERSEDIA REAL-TIME (diinject otomatis setiap percakapan):
 - Kurs mata uang: USD, SGD, EUR, AUD, CNY, JPY, MYR ke IDR
 - IHSG — indeks harga saham Indonesia
-- Saham blue chip: BBCA, BBRI, BMRI, BBNI, TLKM, ASII, UNVR, ICBP, INDF, KLBF, GOTO, ADRO, PTBA, ITMG, PGAS, JSMR, SMGR, EXCL, AMRT
-- Saham dividen: ANTM, INCO, PTPP, BSDE, CPIN, TBIG, ISAT, MEDC, AKRA, UNTR
+- Saham tersedia: BBCA, BBRI, BMRI (harga dan data dividen)
 - Emas dunia (spot price USD/troy oz) + estimasi IDR/gram
 - Bitcoin (BTC) dan Ethereum (ETH)
 - Berita ekonomi terkini Indonesia
