@@ -14,6 +14,45 @@ import { chat } from "./anthropic.js";
 // FETCH DATA FINANSIAL — kurs, IHSG, emas, komoditas
 // ============================================
 let finansialCache = { data: null, timestamp: 0 };
+
+// ============================================
+// TABEL DIVIDEN STATIS — Update manual 1-2x/tahun
+// Sumber: Bareksa, Katadata, TradingView (Juni 2026)
+// ============================================
+const DIVIDEN_STATIS = {
+  // BLUE CHIP
+  BBCA: { nama: "Bank Central Asia", dps: 305, yield_pct: 4.50, frekuensi: "2x/tahun", tahun_buku: 2025 },
+  BBRI: { nama: "Bank Rakyat Indonesia", dps: 346, yield_pct: 11.34, frekuensi: "2x/tahun", tahun_buku: 2025 },
+  BMRI: { nama: "Bank Mandiri", dps: 477, yield_pct: 11.58, frekuensi: "2x/tahun", tahun_buku: 2025 },
+  BBNI: { nama: "Bank Negara Indonesia", dps: null, yield_pct: 7.5, frekuensi: "2x/tahun", tahun_buku: 2025 },
+  TLKM: { nama: "Telkom Indonesia", dps: 212, yield_pct: 8.3, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  ASII: { nama: "Astra International", dps: null, yield_pct: 8.3, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  UNVR: { nama: "Unilever Indonesia", dps: null, yield_pct: 4.2, frekuensi: "2x/tahun", tahun_buku: 2024 },
+  ICBP: { nama: "Indofood CBP", dps: null, yield_pct: 1.7, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  INDF: { nama: "Indofood Sukses Makmur", dps: 280, yield_pct: 3.53, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  KLBF: { nama: "Kalbe Farma", dps: null, yield_pct: 2.1, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  GOTO: { nama: "GoTo Gojek Tokopedia", dps: null, yield_pct: null, frekuensi: "belum bayar dividen", tahun_buku: null },
+  ADRO: { nama: "Adaro Energy", dps: 158, yield_pct: 4.5, frekuensi: "2x/tahun", tahun_buku: 2024 },
+  PTBA: { nama: "Bukit Asam", dps: 332, yield_pct: 13.23, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  ITMG: { nama: "Indo Tambangraya Megah", dps: 2245, yield_pct: 9.9, frekuensi: "2x/tahun", tahun_buku: 2024 },
+  PGAS: { nama: "Perusahaan Gas Negara", dps: 182, yield_pct: 11.27, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  JSMR: { nama: "Jasa Marga", dps: null, yield_pct: null, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  SMGR: { nama: "Semen Indonesia", dps: null, yield_pct: 1.4, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  EXCL: { nama: "XL Axiata", dps: null, yield_pct: null, frekuensi: "tidak rutin", tahun_buku: null },
+  AMRT: { nama: "Sumber Alfaria Trijaya", dps: null, yield_pct: 1.1, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  // DIVIDEN TINGGI
+  ANTM: { nama: "Aneka Tambang", dps: 152, yield_pct: null, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  INCO: { nama: "Vale Indonesia", dps: null, yield_pct: null, frekuensi: "tidak rutin", tahun_buku: null },
+  PTPP: { nama: "PP (Pembangunan Perumahan)", dps: null, yield_pct: null, frekuensi: "tidak rutin", tahun_buku: null },
+  BSDE: { nama: "Bumi Serpong Damai", dps: null, yield_pct: null, frekuensi: "tidak rutin", tahun_buku: null },
+  CPIN: { nama: "Charoen Pokphand Indonesia", dps: null, yield_pct: null, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  TBIG: { nama: "Tower Bersama Infrastructure", dps: null, yield_pct: null, frekuensi: "tidak rutin", tahun_buku: null },
+  ISAT: { nama: "Indosat Ooredoo Hutchison", dps: null, yield_pct: null, frekuensi: "tidak rutin", tahun_buku: null },
+  MEDC: { nama: "Medco Energi", dps: null, yield_pct: null, frekuensi: "tidak rutin", tahun_buku: null },
+  AKRA: { nama: "AKR Corporindo", dps: null, yield_pct: null, frekuensi: "1x/tahun", tahun_buku: 2024 },
+  UNTR: { nama: "United Tractors", dps: 2151, yield_pct: 10.29, frekuensi: "1x/tahun", tahun_buku: 2024 },
+};
+
 let sahamCache = { ihsg: null, sahamIndo: {}, date: null }; // sekali per hari
 let dividenCache = { data: null, version: null }; // sekali per restart
 let beritaCache = { data: null, timestamp: 0 };
@@ -248,6 +287,17 @@ ${['IHSG','BBCA','BBRI','BMRI','XAU','BTC'].filter(s => historyBySymbol[s]?.leng
   `- ${s}: ${historyBySymbol[s].slice(0,5).map(d => `${d.date.slice(5)}: ${Number(d.price).toLocaleString('id-ID')}`).join(' → ')}`
 ).join('\n')}` : '';
 
+  // Format tabel dividen statis
+  const dividenStatisText = Object.entries(DIVIDEN_STATIS)
+    .filter(([, v]) => v.dps || v.yield_pct)
+    .map(([k, v]) => {
+      const dps = v.dps ? `Rp ${v.dps.toLocaleString('id-ID')}/saham` : '';
+      const yield_ = v.yield_pct ? `yield ${v.yield_pct}%` : '';
+      const info = [dps, yield_].filter(Boolean).join(', ');
+      return `- ${k} (${v.nama}): ${info} | ${v.frekuensi} | buku ${v.tahun_buku}`;
+    })
+    .join('\n');
+
   const finansialText = `
 DATA FINANSIAL REFERENSI (diambil ${fetchDate} pukul ${fetchTime} WIB):
 
@@ -277,7 +327,12 @@ ${formatDividen(dividenListOutput)}
 - Bitcoin (BTC): ${formatUSD(btcUSD)}
 - Ethereum (ETH): ${formatUSD(ethUSD)}
 
-PENTING: Data saham adalah harga penutupan hari bursa terakhir. Bursa IDX buka Senin-Jumat 09.00-16.00 WIB. Konfirmasi harga terkini di aplikasi broker atau RTI Business.${historyText}`.trim();
+PENTING: Data saham adalah harga penutupan hari bursa terakhir. Bursa IDX buka Senin-Jumat 09.00-16.00 WIB. Konfirmasi harga terkini di aplikasi broker atau RTI Business.
+
+*DATA DIVIDEN TERAKHIR (sumber: Bareksa/Katadata, update manual):*
+${dividenStatisText}
+
+Catatan dividen: Data ini adalah dividen terakhir yang dibayarkan. Dividen berikutnya belum tentu sama — tergantung laba perusahaan. Untuk data terkini cek di Stockbit atau RTI Business.${historyText}`.trim();
 
   finansialCache = { data: finansialText, timestamp: now };
   console.log("[Finansial] Data berhasil diupdate");
