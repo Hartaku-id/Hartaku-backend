@@ -144,7 +144,7 @@ async function fetchKursTerkini() {
     console.log(`[DataSectors] Saham Indo: ${Object.keys(results.sahamIndo).length} berhasil`);
 
     // Dividend details — fetch sekali per restart (dividen jarang berubah)
-    const dividenList = ["UNTR.JK", "ANTM.JK", "INCO.JK"];
+    const dividenList = ["BBCA.JK", "BBRI.JK", "BMRI.JK"];
     if (!dividenCache.data) {
       const dividenResults = await Promise.all(
         dividenList.map(async (kode) => {
@@ -155,7 +155,6 @@ async function fetchKursTerkini() {
             );
             const data = await res.json();
             if (data.success && data.data) {
-              if (kode === 'UNTR') console.log(`[Dividen Debug] UNTR:`, JSON.stringify(data.data).substring(0, 500));
               return { kode, data: data.data };
             }
           } catch (e) { /* skip */ }
@@ -193,8 +192,8 @@ async function fetchKursTerkini() {
     ? `- IHSG: ${formatNum(results.ihsg.close)} ${formatChange(results.ihsg.change)} per ${results.ihsg.date}`
     : '- IHSG: tidak tersedia';
 
-  const blueChip = ['BBCA','BBRI','BMRI','BBNI','TLKM','ASII','UNVR','ICBP','INDF','KLBF','GOTO','ADRO','PTBA','ITMG','PGAS','JSMR','SMGR','EXCL','AMRT'];
-  const dividenListOutput = ['ANTM','INCO','PTPP','BSDE','CPIN','TBIG','ISAT','MEDC','AKRA','UNTR'];
+  const blueChip = ['BBCA','BBRI','BMRI'];
+  const dividenListOutput = ['BBCA','BBRI','BMRI'];
   const formatSaham = (list) => list
     .filter(k => results.sahamIndo[k])
     .map(k => `- ${k}: Rp ${formatIDR(results.sahamIndo[k].close)}`)
