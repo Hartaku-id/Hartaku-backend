@@ -15,7 +15,7 @@ import { chat } from "./anthropic.js";
 // ============================================
 let finansialCache = { data: null, timestamp: 0 };
 let sahamCache = { ihsg: null, sahamIndo: {}, date: null }; // sekali per hari
-let dividenCache = { data: null }; // sekali per restart
+let dividenCache = { data: null, version: null }; // sekali per restart
 let beritaCache = { data: null, timestamp: 0 };
 
 async function fetchKursTerkini() {
@@ -145,7 +145,9 @@ async function fetchKursTerkini() {
 
     // Dividend details — fetch sekali per restart (dividen jarang berubah)
     const dividenList = ["BBCA.JK", "BBRI.JK", "BMRI.JK"];
-    if (!dividenCache.data) {
+    const dividenVersion = dividenList.join(',');
+    if (!dividenCache.data || dividenCache.version !== dividenVersion) {
+      console.log(`[DataSectors] Fetch dividen ticker: ${dividenVersion}`);
       const dividenResults = await Promise.all(
         dividenList.map(async (kode) => {
           try {
@@ -164,7 +166,8 @@ async function fetchKursTerkini() {
       const divObj = {};
       dividenResults.forEach(d => { if (d) divObj[d.kode] = d.data; });
       dividenCache.data = divObj;
-      console.log(`[DataSectors] Dividen: ${Object.keys(divObj).length} berhasil (cached)`);
+      dividenCache.version = dividenVersion;
+      console.log(`[DataSectors] Dividen: ${Object.keys(divObj).length} berhasil`);
     }
     results.dividen = dividenCache.data;
   }
