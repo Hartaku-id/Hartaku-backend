@@ -148,14 +148,19 @@ async function fetchKursTerkini() {
     const dividenVersion = dividenList.join(',');
     if (!dividenCache.data || dividenCache.version !== dividenVersion) {
       console.log(`[DataSectors] Fetch dividen ticker: ${dividenVersion}`);
+      const today = new Date().toISOString().split('T')[0];
+      const oneYearAgo = new Date(Date.now() - 365 * 24 * 3600000).toISOString().split('T')[0];
+
       const dividenResults = await Promise.all(
         dividenList.map(async (kode) => {
           try {
+            // Pakai events endpoint dengan filter ticker
             const res = await fetch(
-              `https://api.datasectors.com/api/stocks/dividends/details/${kode}`,
+              `https://api.datasectors.com/api/stocks/dividends/events?start_date=${oneYearAgo}&end_date=${today}&ticker=${kode.replace('.JK','')}`,
               { headers }
             );
             const data = await res.json();
+            console.log(`[Dividen] ${kode}:`, JSON.stringify(data).substring(0, 300));
             if (data.success && data.data) {
               return { kode, data: data.data };
             }
